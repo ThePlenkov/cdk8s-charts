@@ -10,7 +10,7 @@ set -euo pipefail
 echo "=== GitLab Seed ==="
 
 echo "Creating root PAT..."
-kubectl exec "statefulset/${GITLAB_RESOURCE_NAME}" -c gitlab -- gitlab-rails runner /seed/root-pat.rb
+kubectl exec -i "statefulset/${GITLAB_RESOURCE_NAME}" -c gitlab -- gitlab-rails runner - < /seed/root-pat.rb
 
 echo "Creating project: ${PROJECT_NAME}"
 HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" -X POST "${GITLAB_HOST}/api/v4/projects" \
