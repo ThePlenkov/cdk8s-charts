@@ -346,14 +346,14 @@ proxy config:
 # litellm/config.yaml
 litellm_settings:
   callbacks:
-    - booking_embeddings.booking_embeddings
+    - custom_embeddings.custom_embeddings
 ```
 
 ```typescript
 callbacks: {
   mountPath: '/etc/litellm',
   files: {
-    'booking_embeddings.py': fs.readFileSync('litellm/booking_embeddings.py', 'utf-8'),
+    'custom_embeddings.py': fs.readFileSync('litellm/custom_embeddings.py', 'utf-8'),
   },
 }
 ```
@@ -868,10 +868,9 @@ A full deployment (all services enabled, 1 agent) produces approximately
 
 ---
 
-## 16. Real-world example
+## 16. Full stack example
 
-This is the actual `main.ts` from the `composed-booking` project — a
-production-like AI agent platform deployed on k3d:
+This example shows a production-like AI agent platform deployed on k3d:
 
 ```typescript
 import { App, Chart } from 'cdk8s';
@@ -890,7 +889,7 @@ const discoverFiles = (dir: string, ext: string) =>
       .map((f) => [f.replace(ext, ''), fs.readFileSync(`${dir}/${f}`, 'utf-8')]),
   );
 
-class ComposedBooking extends Chart {
+class AgentWorkspace extends Chart {
   constructor(scope: Construct, id: string) {
     const config = loadConfig();      // from values.yaml
     const secrets = loadSecrets();    // from .env
@@ -898,8 +897,8 @@ class ComposedBooking extends Chart {
     super(scope, id, { namespace: config.namespace });
 
     const planeWs = {
-      slug: config.plane?.workspace?.slug ?? 'composed-booking',
-      name: config.plane?.workspace?.name ?? 'Composed Booking',
+      slug: config.plane?.workspace?.slug ?? 'agent-workspace',
+      name: config.plane?.workspace?.name ?? 'Agent Workspace',
     };
 
     new AgentPlatform(this, 'platform', {
@@ -934,7 +933,7 @@ class ComposedBooking extends Chart {
         banks: discoverFiles('hindsight/banks', '.json'),  // auto-discover banks
       },
 
-      redis: { password: 'composed-booking-redis' },
+      redis: { password: 'agent-workspace-redis' },
       temporal: {},
       qdrant: {
         storageSize: config.qdrant?.storageSize,
@@ -956,7 +955,7 @@ class ComposedBooking extends Chart {
         extras: {
           admin: {
             email: config.plane?.admin?.email ?? 'admin@local.dev',
-            password: config.plane?.admin?.password ?? 'composed-booking',
+            password: config.plane?.admin?.password ?? 'agent-workspace',
           },
           workspace: planeWs,
           apiToken: secrets.planeApiToken,
@@ -986,7 +985,7 @@ class ComposedBooking extends Chart {
 }
 
 const app = new App();
-new ComposedBooking(app, 'composed-booking');
+new AgentWorkspace(app, 'agent-workspace');
 app.synth();
 ```
 

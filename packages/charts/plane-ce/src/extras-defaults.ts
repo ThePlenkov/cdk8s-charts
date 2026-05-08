@@ -45,8 +45,8 @@ from plane.license.models import Instance, InstanceAdmin
 
 email = os.environ["ADMIN_EMAIL"]
 password = os.environ["ADMIN_PASSWORD"]
-ws_slug = os.environ.get("WORKSPACE_SLUG", "composed-booking")
-ws_name = os.environ.get("WORKSPACE_NAME", "Composed Booking")
+ws_slug = os.environ.get("WORKSPACE_SLUG", "agent-workspace")
+ws_name = os.environ.get("WORKSPACE_NAME", "Agent Workspace")
 api_token = os.environ.get("PLANE_API_TOKEN", "")
 
 # -- Instance check --
