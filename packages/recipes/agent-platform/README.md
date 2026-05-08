@@ -24,7 +24,7 @@ everything connects.
 13. [Helm value overrides](#13-helm-value-overrides)
 14. [Dependency graph](#14-dependency-graph)
 15. [K8s resources generated](#15-k8s-resources-generated)
-16. [Real-world example](#16-real-world-example)
+16. [Full stack example](#16-full-stack-example)
 17. [Recipes vs charts](#17-recipes-vs-charts)
 18. [Troubleshooting](#18-troubleshooting)
 
@@ -176,7 +176,7 @@ default.
 
 ### Full example
 
-See [section 16](#16-real-world-example) for a production-like configuration
+See [section 16](#16-full-stack-example) for a production-like configuration
 with all services enabled.
 
 ---
@@ -900,6 +900,10 @@ class AgentWorkspace extends Chart {
       slug: config.plane?.workspace?.slug ?? 'agent-workspace',
       name: config.plane?.workspace?.name ?? 'Agent Workspace',
     };
+    const planeAdminPassword = secrets.planeAdminPassword;
+    if (!planeAdminPassword) {
+      throw new Error('PLANE_ADMIN_PASSWORD must be provided via .env');
+    }
 
     new AgentPlatform(this, 'platform', {
       namespace: config.namespace,
@@ -955,7 +959,7 @@ class AgentWorkspace extends Chart {
         extras: {
           admin: {
             email: config.plane?.admin?.email ?? 'admin@local.dev',
-            password: config.plane?.admin?.password ?? 'agent-workspace',
+            password: planeAdminPassword,
           },
           workspace: planeWs,
           apiToken: secrets.planeApiToken,
