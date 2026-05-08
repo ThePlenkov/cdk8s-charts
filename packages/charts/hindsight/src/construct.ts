@@ -79,6 +79,7 @@ export class Hindsight extends HelmConstruct<HindsightValues> {
       props.namespace,
       computed,
       props.values,
+      { version: props.version },
     );
 
     this.exports = {

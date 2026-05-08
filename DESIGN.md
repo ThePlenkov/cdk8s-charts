@@ -76,6 +76,8 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 **Invariants:**
 - `renderChart` always deep-merges `props.values` (user overrides) on top of computed values
 - `flattenToEnv` skips `null`/`undefined` values; arrays are stringified
+- Chart constructs accept an optional `version` prop and pass it to Helm. They
+  do not hardcode deployment version pins; applications own those pins.
 
 ### 3.2 Litellm Construct
 
@@ -91,6 +93,7 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 | `proxyConfig` | `LitellmProxyConfig` | yes | Full proxy config (model_list, settings, etc.) |
 | `virtualKeys` | `LitellmVirtualKey[]` | no | Keys to provision via API after startup |
 | `callbacks` | `{ mountPath, files }` | no | Python callbacks mounted via ConfigMap with subPath |
+| `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<LitellmValues>` | no | Raw Helm value overrides |
 
 **Exports** (`LitellmExports`):
@@ -119,6 +122,7 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 |------|------|----------|---------|
 | `namespace` | `string` | yes | K8s namespace |
 | `api` | `HindsightApiConfig` | no | Nested config, auto-flattened to `HINDSIGHT_API_*` env vars |
+| `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<HindsightValues>` | no | Raw Helm value overrides |
 
 **Exports** (`HindsightExports`):
@@ -228,6 +232,7 @@ Wraps the [Headlamp](https://headlamp.dev/) Helm chart — a modern Kubernetes D
 | Prop | Type | Required | Purpose |
 |------|------|----------|---------|
 | `namespace` | `string` | yes | K8s namespace |
+| `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<HeadlampValues>` | no | Raw Helm value overrides |
 
 | Export | Type | Value |

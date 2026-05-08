@@ -21,7 +21,9 @@ export class Redis extends HelmConstruct<RedisValues> {
       ...(props.persistence ? { master: { persistence: props.persistence } } : {}),
     };
 
-    const values = this.renderChart(CHART, id, props.namespace, computed, props.values);
+    const values = this.renderChart(CHART, id, props.namespace, computed, props.values, {
+      version: props.version,
+    });
 
     const port = values.master?.service?.port ?? 6379;
 

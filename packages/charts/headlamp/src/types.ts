@@ -111,6 +111,8 @@ export interface HeadlampValues {
 
 export interface HeadlampProps {
   namespace: string;
+  /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
+  version?: string;
   /** Raw Helm value overrides (deep-merged into computed values). */
   values?: DeepPartial<HeadlampValues>;
 }

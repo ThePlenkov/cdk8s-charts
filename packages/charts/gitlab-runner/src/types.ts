@@ -39,6 +39,8 @@ export interface GitlabRunnerProps {
   runnerSecretName: string;
   jobNamespace?: string;
   defaultJobImage?: string;
+  /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
+  version?: string;
   values?: DeepPartial<GitlabRunnerValues>;
 }
 
