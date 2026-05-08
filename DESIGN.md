@@ -39,6 +39,9 @@ cdk8s-charts/
       headlamp/                     @cdk8s-charts/headlamp
         src/types.ts                Headlamp Helm values + Props/Exports
         src/construct.ts            Headlamp construct (K8s Dashboard)
+      gitlab-runner/                @cdk8s-charts/gitlab-runner
+        src/types.ts                GitLab Runner Helm values + Props/Exports
+        src/construct.ts            GitlabRunner construct
     recipes/
       hindsight-litellm/            @cdk8s-charts/hindsight-litellm
         src/construct.ts            Composed stack with auto cross-wiring
@@ -56,6 +59,7 @@ utils  <--  hindsight
 utils  <--  plane-ce
 utils  <--  redis
 utils  <--  headlamp
+utils  <--  gitlab-runner
 utils + litellm + hindsight  <--  hindsight-litellm
 utils + litellm + plane-ce   <--  litellm-plane
 hindsight-litellm  <--  examples/coding-agent-memory
@@ -76,8 +80,8 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 **Invariants:**
 - `renderChart` always deep-merges `props.values` (user overrides) on top of computed values
 - `flattenToEnv` skips `null`/`undefined` values; arrays are stringified
-- Chart constructs accept an optional `version` prop and pass it to Helm. They
-  do not hardcode deployment version pins; applications own those pins.
+- Helm-backed chart constructs may expose an optional chart `version` prop. When
+  present, it is passed to Helm; applications own those pins.
 
 ### 3.2 Litellm Construct
 
@@ -239,6 +243,37 @@ Wraps the [Headlamp](https://headlamp.dev/) Helm chart — a modern Kubernetes D
 |--------|------|-------|
 | `host` | `string` | Service DNS name |
 | `port` | `number` | `80` |
+
+### 3.8 GitLab Runner Construct
+
+**Package**: `@cdk8s-charts/gitlab-runner`
+
+Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) Helm chart for in-cluster Kubernetes executor runners.
+
+**Chart:** `gitlab-runner` from `https://charts.gitlab.io` (non-OCI, uses `helmFlags`)
+
+| Prop | Type | Required | Purpose |
+|------|------|----------|---------|
+| `namespace` | `string` | yes | K8s namespace for the runner manager |
+| `gitlabUrl` | `string` | yes | GitLab URL used for runner registration and default clone URL |
+| `runnerSecretName` | `string` | yes | Existing Kubernetes Secret containing the runner token |
+| `jobNamespace` | `string` | no | Namespace where runner jobs execute (default: `namespace`) |
+| `defaultJobImage` | `string` | no | Default Kubernetes executor image (default: `node:22`) |
+| `version` | `string` | no | Helm chart version pin |
+| `values` | `DeepPartial<GitlabRunnerValues>` | no | Raw Helm value overrides |
+
+| Export | Type | Value |
+|--------|------|-------|
+| `deploymentName` | `string` | Helm fullname (`{id}-gitlab-runner`) |
+| `secretName` | `string` | Runner token Secret name |
+
+**Default behaviour:**
+
+1. Renders the upstream Helm chart with the GitLab chart repository flag.
+2. Uses `runnerSecretName` via `runners.secret` instead of inlining runner tokens into Helm values.
+3. Builds a default Kubernetes executor TOML config using `gitlabUrl` as `clone_url`.
+4. Enables RBAC for pods, attach/exec, logs, secrets, serviceaccounts, services, and events in the core API group.
+5. Exposes `deploymentName` based on the chart fullname helper (`{release}-{chart}` by default; `fullnameOverride` or `nameOverride` may change it).
 
 ## 4. Memory bank configuration
 

@@ -1,2 +1,9 @@
 export { GitlabRunner } from './construct';
-export type { GitlabRunnerExports, GitlabRunnerProps, GitlabRunnerValues } from './types';
+export type {
+  Exports,
+  GitlabRunnerExports,
+  GitlabRunnerProps,
+  GitlabRunnerValues,
+  Props,
+  Values,
+} from './types';

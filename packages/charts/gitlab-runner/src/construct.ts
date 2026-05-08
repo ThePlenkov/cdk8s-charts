@@ -3,8 +3,8 @@ import type { Construct } from 'constructs';
 import type { GitlabRunnerExports, GitlabRunnerProps, GitlabRunnerValues } from './types';
 
 const DEFAULT_JOB_IMAGE = 'node:22';
-const DEFAULT_RUNNER_CONFIG = (namespace: string, image: string) => `[[runners]]
-  clone_url = "http://gitlab/"
+const DEFAULT_RUNNER_CONFIG = (namespace: string, image: string, gitlabUrl: string) => `[[runners]]
+  clone_url = "${gitlabUrl}"
   [runners.kubernetes]
     namespace = "${namespace}"
     image = "${image}"
@@ -29,17 +29,21 @@ export class GitlabRunner extends HelmConstruct<GitlabRunnerValues> {
         create: true,
         clusterWideAccess: false,
         rules: [
-          { resources: ['events'], verbs: ['list', 'watch'] },
-          { resources: ['pods'], verbs: ['create', 'delete', 'get', 'list', 'watch'] },
+          { apiGroups: [''], resources: ['events'], verbs: ['list', 'watch'] },
+          {
+            apiGroups: [''],
+            resources: ['pods'],
+            verbs: ['create', 'delete', 'get', 'list', 'watch'],
+          },
           {
             apiGroups: [''],
             resources: ['pods/attach', 'pods/exec'],
             verbs: ['create', 'delete', 'get', 'patch'],
           },
-          { resources: ['pods/log'], verbs: ['get', 'list'] },
-          { resources: ['secrets'], verbs: ['create', 'delete', 'get', 'update'] },
-          { resources: ['serviceaccounts'], verbs: ['get'] },
-          { resources: ['services'], verbs: ['create', 'get'] },
+          { apiGroups: [''], resources: ['pods/log'], verbs: ['get', 'list'] },
+          { apiGroups: [''], resources: ['secrets'], verbs: ['create', 'delete', 'get', 'update'] },
+          { apiGroups: [''], resources: ['serviceaccounts'], verbs: ['get'] },
+          { apiGroups: [''], resources: ['services'], verbs: ['create', 'get'] },
         ],
       },
       serviceAccount: {
@@ -47,7 +51,7 @@ export class GitlabRunner extends HelmConstruct<GitlabRunnerValues> {
       },
       runners: {
         secret: props.runnerSecretName,
-        config: DEFAULT_RUNNER_CONFIG(jobNamespace, defaultJobImage),
+        config: DEFAULT_RUNNER_CONFIG(jobNamespace, defaultJobImage, props.gitlabUrl),
       },
     };
 
@@ -57,7 +61,7 @@ export class GitlabRunner extends HelmConstruct<GitlabRunnerValues> {
     });
 
     this.exports = {
-      deploymentName: id,
+      deploymentName: `${id}-gitlab-runner`,
       secretName: props.runnerSecretName,
     };
   }
