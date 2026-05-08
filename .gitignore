@@ -9,8 +9,7 @@ dist/
 # Dependencies
 node_modules/
 
-# Lock files (may contain corporate registry URLs)
-package-lock.json
+# Alternative lock files (package-lock.json is tracked for reproducible installs)
 bun.lockb
 pnpm-lock.yaml
 yarn.lock
