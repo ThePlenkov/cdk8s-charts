@@ -25,10 +25,17 @@ export class Headlamp extends HelmConstruct<HeadlampValues> {
       },
     };
 
-    const values = this.renderChart(CHART_NAME, id, props.namespace, computed, props.values, {
-      helmFlags: ['--repo', CHART_REPO],
-      version: props.version,
-    });
+    const values = this.renderChart(
+      props.chart ?? CHART_NAME,
+      id,
+      props.namespace,
+      computed,
+      props.values,
+      {
+        repo: props.repo ?? CHART_REPO,
+        version: props.version,
+      },
+    );
 
     this.exports = {
       host: `${id}`,

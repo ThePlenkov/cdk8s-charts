@@ -661,6 +661,8 @@ export interface LitellmProps {
     mountPath: string;
     files: Record<string, string>;
   };
+  /** Helm chart ref. Defaults to oci://ghcr.io/berriai/litellm-helm. */
+  chart?: string;
   /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
   version?: string;
   /** Any chart-level value overrides (deep-merged into computed values). */

@@ -81,6 +81,12 @@ export function deepMerge<T extends Record<string, any>>(a: T, b: DeepPartial<T>
 
 export interface HelmConstructProps<V> {
   namespace: string;
+  /** Helm chart ref. For OCI charts this is the full oci:// URL; for repo charts this is the chart name. */
+  chart?: string;
+  /** Helm repository URL for non-OCI charts. */
+  repo?: string;
+  /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
+  version?: string;
   /** Chart-level value overrides (deep-merged into computed values). */
   values?: DeepPartial<V>;
 }
@@ -88,7 +94,7 @@ export interface HelmConstructProps<V> {
 /**
  * Base class for constructs that wrap a single Helm chart.
  *
- * Subclasses call `renderChart()` with computed values and a chart OCI ref.
+ * Subclasses call `renderChart()` with computed values and a chart ref.
  * The base handles deep-merging `props.values` overrides and instantiating
  * the `Helm` construct.
  *
@@ -127,15 +133,19 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
     namespace: string,
     computed: V,
     overrides?: DeepPartial<V>,
-    options?: { helmFlags?: string[]; version?: string },
+    options?: { helmFlags?: string[]; repo?: string; version?: string },
   ): V {
     const values = overrides ? deepMerge(computed, overrides) : computed;
 
     const { chart: resolved, fromCache } = resolveChart(chart, options?.version);
+    const helmFlags = [
+      ...(options?.repo ? ['--repo', options.repo] : []),
+      ...(options?.helmFlags ?? []),
+    ];
     // When using a local .tgz: version is already baked in, --repo is irrelevant
     const flags = fromCache
-      ? options?.helmFlags?.filter((f, i, arr) => f !== '--repo' && arr[i - 1] !== '--repo')
-      : options?.helmFlags;
+      ? helmFlags.filter((f, i, arr) => f !== '--repo' && arr[i - 1] !== '--repo')
+      : helmFlags;
 
     new Helm(this, 'chart', {
       chart: resolved,

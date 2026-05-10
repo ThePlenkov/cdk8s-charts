@@ -75,7 +75,7 @@ export class Litellm extends HelmConstruct<LitellmValues> {
     const { volumes: _v, volumeMounts: _vm, ...restOverrides } = props.values ?? {};
 
     const values = this.renderChart(
-      'oci://ghcr.io/berriai/litellm-helm',
+      props.chart ?? 'oci://ghcr.io/berriai/litellm-helm',
       id,
       props.namespace,
       computed,
