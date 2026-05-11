@@ -42,14 +42,14 @@ new LitellmWithPlane(chart, 'stack', {
   planeSecretKey: process.env.PLANE_SECRET_KEY!,
   agents: [
     {
-      name: 'booking-agent',
-      url: 'http://booking-agent:9000',
-      description: 'Handles booking workflows',
+      name: 'workflow-agent',
+      url: 'http://workflow-agent:9000',
+      description: 'Handles workflow automation',
       skills: [
         {
-          id: 'create-booking',
-          name: 'Create Booking',
-          description: 'Creates a new booking',
+          id: 'create-task',
+          name: 'Create Task',
+          description: 'Creates a new task',
         },
       ],
     },

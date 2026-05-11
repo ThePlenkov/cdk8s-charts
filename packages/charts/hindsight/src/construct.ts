@@ -42,9 +42,7 @@ export class Hindsight extends HelmConstruct<HindsightValues> {
     super(scope, id);
 
     // Flatten api config -> HINDSIGHT_API_* env vars, split into env/secrets
-    const allEnv = props.api
-      ? this.flattenToEnv(props.api as Record<string, unknown>, 'HINDSIGHT_API')
-      : {};
+    const allEnv = props.api ? this.flattenToEnv(props.api, 'HINDSIGHT_API') : {};
 
     const env: Record<string, string> = {};
     const secrets: Record<string, string> = {};
@@ -79,6 +77,7 @@ export class Hindsight extends HelmConstruct<HindsightValues> {
       props.namespace,
       computed,
       props.values,
+      { version: props.version },
     );
 
     this.exports = {

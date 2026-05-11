@@ -661,6 +661,8 @@ export interface LitellmProps {
     mountPath: string;
     files: Record<string, string>;
   };
+  /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
+  version?: string;
   /** Any chart-level value overrides (deep-merged into computed values). */
   values?: DeepPartial<LitellmValues>;
 }

@@ -80,7 +80,7 @@ export class Litellm extends HelmConstruct<LitellmValues> {
       props.namespace,
       computed,
       Object.keys(restOverrides).length > 0 ? restOverrides : undefined,
-      { helmFlags: ['--skip-tests'] },
+      { helmFlags: ['--skip-tests'], version: props.version },
     );
 
     const svcHost = id;
