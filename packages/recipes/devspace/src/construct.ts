@@ -13,7 +13,7 @@ export class DevSpace extends Chart {
 
     const {
       namespace,
-      devpod = { enabled: true, storageSize: '10Gi', password: 'devpod123' },
+      devpod = { enabled: true, storageSize: '10Gi' },
       gascity = { enabled: true, storageSize: '20Gi', withDashboard: true, withSupervisor: true },
       nginx = { enabled: true, listenPort: 8080 },
       openshift = { enabled: false, createRoutes: false },
@@ -23,6 +23,9 @@ export class DevSpace extends Chart {
 
     // === DevPod Deployment ===
     if (devpod.enabled) {
+      if (!devpod.password) {
+        throw new Error('devpod.password is required when devpod.enabled is true');
+      }
       const devpodInstance = new DevPod(this, 'devpod', {
         namespace,
         password: devpod.password,

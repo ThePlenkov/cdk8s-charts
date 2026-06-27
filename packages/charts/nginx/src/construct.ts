@@ -18,8 +18,8 @@ export class Nginx extends Deployment {
       targetDeployment,
     } = props;
 
-    // Generate nginx config
-    const nginxConfig = this.generateNginxConfig(listenPort, proxyConfigs);
+    // Generate nginx config using static method
+    const nginxConfig = Nginx.generateNginxConfig(listenPort, proxyConfigs);
 
     // ConfigMap
     const configMap = new ConfigMap(scope, `${id}-config`, {
@@ -97,8 +97,35 @@ export class Nginx extends Deployment {
         port: listenPort,
       };
     } else {
-      // Sidecar pattern - return container for use in other charts
-      // This is handled by the caller
+      // Sidecar pattern - create minimal deployment for sidecar mode
+      super(scope, id, {
+        metadata: { name: id, namespace },
+        spec: {
+          replicas: 1,
+          selector: { matchLabels: { app: id } },
+          template: {
+            metadata: { labels: { app: id } },
+            spec: {
+              containers: [nginxContainer],
+              volumes: [
+                {
+                  name: 'nginx-config',
+                  configMap: { name: `${id}-config` },
+                },
+                {
+                  name: 'nginx-cache',
+                  emptyDir: {},
+                },
+                {
+                  name: 'nginx-run',
+                  emptyDir: {},
+                },
+              ],
+            },
+          },
+        },
+      });
+
       this.exports = {
         host: targetDeployment,
         port: listenPort,
@@ -106,7 +133,7 @@ export class Nginx extends Deployment {
     }
   }
 
-  private generateNginxConfig(listenPort: number, proxyConfigs: any[]): string {
+  private static generateNginxConfig(listenPort: number, proxyConfigs: any[]): string {
     let config = `
 events {
     worker_connections 1024;
