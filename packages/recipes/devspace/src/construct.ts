@@ -1,7 +1,7 @@
 import type { Construct } from 'constructs';
 import { Chart } from 'cdk8s';
 import { ApiObject } from 'cdk8s';
-import { ConfigMap, Deployment, Volume } from 'cdk8s-plus-27';
+import { ConfigMap, Deployment, Volume, PersistentVolumeClaim } from 'cdk8s-plus-27';
 import type { DevSpaceExports, DevSpaceProps } from './types';
 import { DevPod } from '@cdk8s-charts/devpod';
 
@@ -39,6 +39,17 @@ export class DevSpace extends Chart {
     if (gascity.enabled) {
       const dashboardPort = 8081;
       const supervisorPort = 8372;
+
+      // PVC for Gascity workspace
+      const pvc = new PersistentVolumeClaim(this, 'gascity-pvc', {
+        metadata: { name: 'gascity-pvc', namespace },
+        spec: {
+          accessModes: ['ReadWriteOnce'],
+          resources: {
+            requests: { storage: gascity.storageSize },
+          },
+        },
+      });
 
       // Nginx Config for sidecar
       const nginxConfig = new ConfigMap(this, 'gascity-nginx-config', {
