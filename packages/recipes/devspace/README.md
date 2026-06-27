@@ -75,7 +75,7 @@ new DevSpace(this, 'devspace', {
 |------|------|---------|
 | `enabled` | `boolean` | `true` |
 | `storageSize` | `string` | `10Gi` |
-| `password` | `string` | `devpod123` |
+| `password` | `string` | **Required** (when enabled) |
 
 ### Gascity
 | Prop | Type | Default |
