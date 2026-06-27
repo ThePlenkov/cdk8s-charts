@@ -144,7 +144,7 @@ http {
         listen ${listenPort};
 `;
 
-    for (const proxy of proxyConfigs) {
+    for (const proxy of proxyConfigs || []) {
       config += `
         location ${proxy.path} {
             proxy_pass http://${proxy.targetHost}:${proxy.targetPort}/;
