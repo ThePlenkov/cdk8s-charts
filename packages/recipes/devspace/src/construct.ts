@@ -3,6 +3,7 @@ import { Chart } from 'cdk8s';
 import { ApiObject } from 'cdk8s';
 import { ConfigMap, Deployment, Volume } from 'cdk8s-plus-27';
 import type { DevSpaceExports, DevSpaceProps } from './types';
+import { DevPod } from '@cdk8s-charts/devpod';
 
 export class DevSpace extends Chart {
   public readonly exports: DevSpaceExports;
@@ -22,7 +23,6 @@ export class DevSpace extends Chart {
 
     // === DevPod Deployment ===
     if (devpod.enabled) {
-      const { DevPod } = require('@cdk8s-charts/devpod');
       const devpodInstance = new DevPod(this, 'devpod', {
         namespace,
         password: devpod.password,
@@ -34,7 +34,6 @@ export class DevSpace extends Chart {
 
     // === Gascity Deployment ===
     if (gascity.enabled) {
-      const { Gascity } = require('@cdk8s-charts/gascity');
       const dashboardPort = 8081;
       const supervisorPort = 8372;
 
