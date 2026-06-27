@@ -27,8 +27,8 @@ export interface GascityStorageValues {
 
 export interface GascityProps {
   namespace: string;
-  /** Gascity image URL. Default: OpenShift registry. */
-  imageUrl?: string;
+  /** Gascity image URL (required). */
+  imageUrl: string;
   /** Storage size for workspace. Default: 20Gi. */
   storageSize?: string;
   /** Storage class for PVC. */

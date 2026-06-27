@@ -19,6 +19,10 @@ export class DevPod extends Deployment {
       replicas = 1,
     } = props;
 
+    if (!password || password.trim() === '') {
+      throw new Error('password is required and cannot be empty');
+    }
+
     // ServiceAccount
     const serviceAccount = new ServiceAccount(scope, `${id}-sa`, {
       metadata: { name: `${id}-sa`, namespace },

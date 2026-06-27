@@ -8,7 +8,7 @@ export class Gascity extends Deployment {
   constructor(scope: Construct, id: string, props: GascityProps) {
     const {
       namespace,
-      imageUrl = 'image-registry.openshift-image-registry.svc:5000/theplenkov-dev/gascity:latest',
+      imageUrl,
       storageSize = '20Gi',
       storageClass,
       supervisorPort = 8372,
@@ -22,6 +22,14 @@ export class Gascity extends Deployment {
       withSupervisor = true,
       supervisorUrl = '/supervisor',
     } = props;
+
+    if (!imageUrl) {
+      throw new Error('imageUrl is required');
+    }
+
+    if (!withDashboard && !withSupervisor) {
+      throw new Error('At least one of withDashboard or withSupervisor must be true');
+    }
 
     // ConfigMap
     const configMap = new ConfigMap(scope, `${id}-config`, {

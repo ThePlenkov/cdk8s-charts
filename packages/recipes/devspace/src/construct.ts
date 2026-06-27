@@ -11,13 +11,17 @@ export class DevSpace extends Chart {
   constructor(scope: Construct, id: string, props: DevSpaceProps) {
     super(scope, id);
 
-    const {
-      namespace,
-      devpod = { enabled: true, storageSize: '10Gi' },
-      gascity = { enabled: true, storageSize: '20Gi', withDashboard: true, withSupervisor: true },
-      nginx = { enabled: true, listenPort: 8080 },
-      openshift = { enabled: false, createRoutes: false },
-    } = props;
+    const { namespace } = props;
+    const devpod = { enabled: true, storageSize: '10Gi', ...props.devpod };
+    const gascity = {
+      enabled: true,
+      storageSize: '20Gi',
+      withDashboard: true,
+      withSupervisor: true,
+      ...props.gascity,
+    };
+    const nginx = { enabled: true, listenPort: 8080, ...props.nginx };
+    const openshift = { enabled: false, createRoutes: false, ...props.openshift };
 
     const exports: DevSpaceExports = {};
 
@@ -37,6 +41,9 @@ export class DevSpace extends Chart {
 
     // === Gascity Deployment ===
     if (gascity.enabled) {
+      if (!gascity.imageUrl) {
+        throw new Error('gascity.imageUrl is required when gascity.enabled is true');
+      }
       const dashboardPort = 8081;
       const supervisorPort = 8372;
 
@@ -106,7 +113,7 @@ http {
               containers: [
                 {
                   name: 'gascity',
-                  image: gascity.imageUrl || 'image-registry.openshift-image-registry.svc:5000/theplenkov-dev/gascity:latest',
+                  image: gascity.imageUrl,
                   env: [
                     { name: 'HOME', value: '/workspace' },
                     { name: 'GC_DASHBOARD_SUPERVISOR_URL', value: gascity.supervisorUrl || '/supervisor' },
