@@ -59,10 +59,12 @@ export class DevSpace extends Chart {
       });
 
       // Nginx Config for sidecar
-      const nginxConfig = new ConfigMap(this, 'gascity-nginx-config', {
-        metadata: { name: 'gascity-nginx-config', namespace },
-        data: {
-          'nginx.conf': `
+      let nginxConfig: ConfigMap | undefined;
+      if (nginx.enabled) {
+        nginxConfig = new ConfigMap(this, 'gascity-nginx-config', {
+          metadata: { name: 'gascity-nginx-config', namespace },
+          data: {
+            'nginx.conf': `
 events {
     worker_connections 1024;
 }
@@ -70,20 +72,20 @@ events {
 http {
     server {
         listen ${nginx.listenPort};
-        
+
         location /supervisor/ {
             proxy_pass http://127.0.0.1:${supervisorPort}/;
             proxy_set_header Host localhost;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            
+
             # SSE support
             proxy_http_version 1.1;
             proxy_set_header Connection "";
             proxy_buffering off;
             proxy_cache off;
         }
-        
+
         location / {
             proxy_pass http://127.0.0.1:${dashboardPort}/;
             proxy_set_header Host $host;
@@ -93,8 +95,9 @@ http {
         }
     }
 }`,
-        },
-      });
+          },
+        });
+      }
 
       // Gascity deployment with nginx sidecar
       const deployment = new Deployment(this, 'gascity', {
@@ -136,48 +139,56 @@ http {
                     limits: { cpu: '1', memory: '2Gi' },
                   },
                 },
-                {
-                  name: 'nginx-sidecar',
-                  image: 'nginx:alpine',
-                  ports: [{ containerPort: nginx.listenPort, name: 'nginx-proxy' }],
-                  volumeMounts: [
-                    {
-                      name: 'nginx-config',
-                      mountPath: '/etc/nginx/nginx.conf',
-                      subPath: 'nginx.conf',
-                    },
-                    {
-                      name: 'nginx-cache',
-                      mountPath: '/var/cache/nginx',
-                    },
-                    {
-                      name: 'nginx-run',
-                      mountPath: '/var/run',
-                    },
-                  ],
-                  resources: {
-                    requests: { cpu: '100m', memory: '128Mi' },
-                    limits: { cpu: '200m', memory: '256Mi' },
-                  },
-                },
+                ...(nginx.enabled
+                  ? [
+                      {
+                        name: 'nginx-sidecar',
+                        image: 'nginx:alpine',
+                        ports: [{ containerPort: nginx.listenPort, name: 'nginx-proxy' }],
+                        volumeMounts: [
+                          {
+                            name: 'nginx-config',
+                            mountPath: '/etc/nginx/nginx.conf',
+                            subPath: 'nginx.conf',
+                          },
+                          {
+                            name: 'nginx-cache',
+                            mountPath: '/var/cache/nginx',
+                          },
+                          {
+                            name: 'nginx-run',
+                            mountPath: '/var/run',
+                          },
+                        ],
+                        resources: {
+                          requests: { cpu: '100m', memory: '128Mi' },
+                          limits: { cpu: '200m', memory: '256Mi' },
+                        },
+                      },
+                    ]
+                  : []),
               ],
               volumes: [
                 {
                   name: 'workspace',
                   persistentVolumeClaim: { claimName: 'gascity-pvc' },
                 },
-                {
-                  name: 'nginx-config',
-                  configMap: { name: 'gascity-nginx-config' },
-                },
-                {
-                  name: 'nginx-cache',
-                  emptyDir: {},
-                },
-                {
-                  name: 'nginx-run',
-                  emptyDir: {},
-                },
+                ...(nginx.enabled
+                  ? [
+                      {
+                        name: 'nginx-config',
+                        configMap: { name: 'gascity-nginx-config' },
+                      },
+                      {
+                        name: 'nginx-cache',
+                        emptyDir: {},
+                      },
+                      {
+                        name: 'nginx-run',
+                        emptyDir: {},
+                      },
+                    ]
+                  : []),
               ],
             },
           },
@@ -185,18 +196,19 @@ http {
       });
 
       // Service
+      const servicePort = nginx.enabled ? nginx.listenPort : dashboardPort;
       const service = new ApiObject(this, 'gascity-dashboard-service', {
         apiVersion: 'v1',
         kind: 'Service',
         metadata: { name: 'gascity-dashboard', namespace },
         spec: {
           selector: { app: 'gascity' },
-          ports: [{ port: nginx.listenPort, targetPort: nginx.listenPort }],
+          ports: [{ port: servicePort, targetPort: servicePort }],
         },
       });
 
       exports.gascityDashboardHost = 'gascity-dashboard';
-      exports.gascityDashboardPort = nginx.listenPort;
+      exports.gascityDashboardPort = servicePort;
     }
 
     // === OpenShift Routes ===
@@ -214,13 +226,14 @@ http {
       }
 
       if (gascity.enabled) {
+        const routeTargetPort = nginx.enabled ? nginx.listenPort : dashboardPort;
         new ApiObject(this, 'gascity-route', {
           apiVersion: 'route.openshift.io/v1',
           kind: 'Route',
           metadata: { name: 'gascity-dashboard', namespace },
           spec: {
             to: { kind: 'Service', name: 'gascity-dashboard' },
-            port: { targetPort: nginx.listenPort },
+            port: { targetPort: routeTargetPort },
           },
         });
       }
