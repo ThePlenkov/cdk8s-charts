@@ -42,6 +42,9 @@ cdk8s-charts/
       gitlab-runner/                @cdk8s-charts/gitlab-runner
         src/types.ts                GitLab Runner Helm values + Props/Exports
         src/construct.ts            GitlabRunner construct
+      kodus/                        @cdk8s-charts/kodus
+        src/types.ts                Kodus Helm values + Props/Exports
+        src/construct.ts            Kodus construct with local K3s exposure
     recipes/
       hindsight-litellm/            @cdk8s-charts/hindsight-litellm
         src/construct.ts            Composed stack with auto cross-wiring
@@ -60,6 +63,7 @@ utils  <--  plane-ce
 utils  <--  redis
 utils  <--  headlamp
 utils  <--  gitlab-runner
+utils  <--  kodus
 utils + litellm + hindsight  <--  hindsight-litellm
 utils + litellm + plane-ce   <--  litellm-plane
 hindsight-litellm  <--  examples/coding-agent-memory
@@ -279,6 +283,29 @@ Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) He
 3. Builds a default Kubernetes executor TOML config using `gitlabUrl` as `clone_url`.
 4. Enables RBAC for pods, attach/exec, logs, secrets, serviceaccounts, services, and events in the core API group.
 5. Exposes `deploymentName` based on the chart fullname helper (`{release}-{chart}` by default; `fullnameOverride` or `nameOverride` may change it).
+
+### 3.9 Kodus Construct
+
+**Package**: `@cdk8s-charts/kodus`
+
+Wraps the upstream Kodus self-hosted Helm chart consumed from the application
+repository's `vendor/kodus-installer` submodule. The construct owns only typed
+deployment defaults and local exposure Services; it does not modify the
+upstream chart.
+
+| Prop | Type | Required | Purpose |
+|------|------|----------|---------|
+| `namespace` | `string` | yes | K8s namespace |
+| `chart` | `string` | yes | Local or published Kodus Helm chart path/ref |
+| `imageTag` | `string` | yes | Pinned Kodus app image tag |
+| `llm.baseUrl` | `string` | yes | OpenAI-compatible LiteLLM URL |
+| `llm.apiKey` | `string` | yes | Secret value passed to Kodus |
+| `llm.model` | `string` | yes | LiteLLM model alias |
+| `values` | `DeepPartial<KodusValues>` | no | Raw upstream chart overrides |
+
+The construct exports `webHost`, `webPort`, `apiHost`, `apiPort`, and
+`webhooksHost`/`webhooksPort`. It creates additional `LoadBalancer` Services
+because the upstream chart's internal Services intentionally remain `ClusterIP`.
 
 ## 4. Memory bank configuration
 

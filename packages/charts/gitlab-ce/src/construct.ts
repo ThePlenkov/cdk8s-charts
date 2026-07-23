@@ -47,8 +47,6 @@ function buildOmnibusConfig(externalUrl: string): string {
     "gitlab_rails['registry_enabled'] = false",
     // Disable pages
     "gitlab_pages['enable'] = false",
-    // Disable mattermost
-    "mattermost['enable'] = false",
     // Disable terraform
     "gitlab_rails['terraform_state_enabled'] = false",
     // Reduce resource usage for dev
