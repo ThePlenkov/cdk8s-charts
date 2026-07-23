@@ -1,14 +1,22 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, type StdioOptions } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+interface ChartIndex {
+  charts: Array<{
+    name: string;
+    chart: string;
+    repo?: string;
+  }>;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 const CHART_INDEX = join(REPO_ROOT, '.github', 'chart-index.json');
 const DRY_RUN = process.argv.includes('--dry-run');
 
-function run(cmd, args, opts = {}) {
+function run(cmd: string, args: string[], opts: { cwd?: string; stdio?: StdioOptions } = {}) {
   return execFileSync(cmd, args, {
     cwd: REPO_ROOT,
     encoding: 'utf8',
@@ -36,7 +44,7 @@ function repoArgs() {
   return slug ? ['--repo', slug] : [];
 }
 
-function helmLatestVersion(chart, repo) {
+function helmLatestVersion(chart: string, repo?: string) {
   const args = ['show', 'chart', chart];
   if (repo) args.push('--repo', repo);
   const output = run('helm', args, { stdio: ['pipe', 'pipe', 'ignore'] });
@@ -45,7 +53,13 @@ function helmLatestVersion(chart, repo) {
   return match[1].trim();
 }
 
-function findOpenIssues(name) {
+interface Issue {
+  number: number;
+  title: string;
+  updatedAt: string;
+}
+
+function findOpenIssues(name: string): Issue[] {
   const searchQuery = `Update ${name} to`;
   try {
     const output = run('gh', [
@@ -66,13 +80,13 @@ function findOpenIssues(name) {
       '--json',
       'number,title,updatedAt',
     ]);
-    return JSON.parse(output);
+    return JSON.parse(output) as Issue[];
   } catch {
     return [];
   }
 }
 
-function closeIssue(number) {
+function closeIssue(number: number) {
   if (DRY_RUN) {
     console.log(`[dry-run] would close duplicate issue #${number}`);
     return;
@@ -87,7 +101,7 @@ function closeIssue(number) {
   ]);
 }
 
-function createIssue(name, version, chart, repo) {
+function createIssue(name: string, version: string, chart: string, repo?: string) {
   const title = `Update ${name} to ${version}`;
   const ref = repo ? `${chart} --repo ${repo}` : chart;
   const body = [
@@ -113,7 +127,7 @@ function createIssue(name, version, chart, repo) {
   console.log(`  created issue: ${title} (${output.trim()})`);
 }
 
-function updateIssue(number, name, version, chart, repo) {
+function updateIssue(number: number, name: string, version: string, chart: string, repo?: string) {
   const title = `Update ${name} to ${version}`;
   const ref = repo ? `${chart} --repo ${repo}` : chart;
   const body = [
@@ -139,7 +153,7 @@ function updateIssue(number, name, version, chart, repo) {
   console.log(`  updated issue #${number}: ${title}`);
 }
 
-function processChart(chart, version) {
+function processChart(chart: ChartIndex['charts'][number], version: string) {
   const title = `Update ${chart.name} to ${version}`;
   const issues = findOpenIssues(chart.name);
 
@@ -165,7 +179,7 @@ function processChart(chart, version) {
   updateIssue(primary.number, chart.name, version, chart.chart, chart.repo);
 }
 
-function warnAboutUnindexedCharts(indexed) {
+function warnAboutUnindexedCharts(indexed: Set<string>) {
   const chartsDir = join(REPO_ROOT, 'packages', 'charts');
   for (const dir of readdirSync(chartsDir)) {
     const construct = join(chartsDir, dir, 'src', 'construct.ts');
@@ -179,8 +193,8 @@ function warnAboutUnindexedCharts(indexed) {
   }
 }
 
-async function main() {
-  const index = JSON.parse(readFileSync(CHART_INDEX, 'utf8'));
+function main() {
+  const index: ChartIndex = JSON.parse(readFileSync(CHART_INDEX, 'utf8'));
   const indexed = new Set(index.charts.map((c) => c.name));
   warnAboutUnindexedCharts(indexed);
 
@@ -190,7 +204,7 @@ async function main() {
       console.log(`${chart.name}: ${version}`);
       processChart(chart, version);
     } catch (error) {
-      console.error(`${chart.name}: ${error.message}`);
+      console.error(`${chart.name}: ${(error as Error).message}`);
     }
   }
 }
