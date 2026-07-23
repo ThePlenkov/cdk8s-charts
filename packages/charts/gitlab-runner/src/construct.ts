@@ -55,8 +55,8 @@ export class GitlabRunner extends HelmConstruct<GitlabRunnerValues> {
       },
     };
 
-    this.renderChart('gitlab-runner', id, props.namespace, computed, props.values, {
-      helmFlags: ['--repo', 'https://charts.gitlab.io'],
+    this.renderChart(props.chart ?? 'gitlab-runner', id, props.namespace, computed, props.values, {
+      repo: props.repo ?? 'https://charts.gitlab.io',
       version: props.version,
     });
 

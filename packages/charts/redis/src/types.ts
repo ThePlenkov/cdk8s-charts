@@ -94,6 +94,8 @@ export interface RedisProps {
   architecture?: 'standalone' | 'replication';
   /** Persistence config for the master node. */
   persistence?: { enabled?: boolean; size?: string; storageClass?: string };
+  /** Helm chart ref. Defaults to oci://registry-1.docker.io/bitnamicharts/redis. */
+  chart?: string;
   /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
   version?: string;
   /** Raw Helm value overrides (deep-merged into computed values). */

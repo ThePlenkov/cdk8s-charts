@@ -111,6 +111,10 @@ export interface HeadlampValues {
 
 export interface HeadlampProps {
   namespace: string;
+  /** Helm chart ref. Defaults to headlamp. */
+  chart?: string;
+  /** Helm repository URL for the chart. Defaults to the upstream Headlamp repo. */
+  repo?: string;
   /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
   version?: string;
   /** Raw Helm value overrides (deep-merged into computed values). */

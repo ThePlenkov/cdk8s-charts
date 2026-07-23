@@ -72,7 +72,7 @@ export class Hindsight extends HelmConstruct<HindsightValues> {
     };
 
     const values = this.renderChart(
-      'oci://ghcr.io/vectorize-io/charts/hindsight',
+      props.chart ?? 'oci://ghcr.io/vectorize-io/charts/hindsight',
       id,
       props.namespace,
       computed,

@@ -407,6 +407,8 @@ export interface HindsightProps {
   api?: HindsightApiConfig;
   /** Memory bank templates to import on startup (bankId -> JSON content). */
   banks?: Record<string, string>;
+  /** Helm chart ref. Defaults to oci://ghcr.io/vectorize-io/charts/hindsight. */
+  chart?: string;
   /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
   version?: string;
   /** Chart-level value overrides (deep-merged into computed values). */

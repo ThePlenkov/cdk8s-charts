@@ -42,6 +42,9 @@ cdk8s-charts/
       gitlab-runner/                @cdk8s-charts/gitlab-runner
         src/types.ts                GitLab Runner Helm values + Props/Exports
         src/construct.ts            GitlabRunner construct
+      kodus/                        @cdk8s-charts/kodus
+        src/types.ts                Kodus Helm values + Props/Exports
+        src/construct.ts            Kodus construct with local K3s exposure
     recipes/
       hindsight-litellm/            @cdk8s-charts/hindsight-litellm
         src/construct.ts            Composed stack with auto cross-wiring
@@ -60,6 +63,7 @@ utils  <--  plane-ce
 utils  <--  redis
 utils  <--  headlamp
 utils  <--  gitlab-runner
+utils  <--  kodus
 utils + litellm + hindsight  <--  hindsight-litellm
 utils + litellm + plane-ce   <--  litellm-plane
 hindsight-litellm  <--  examples/coding-agent-memory
@@ -75,13 +79,14 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 |--------|-----------|---------|
 | `deepMerge` | `(a: V, b: DeepPartial<V>) -> V` | Recursive merge; b wins on conflict, arrays replaced |
 | `flattenToEnv` | `(obj, prefix) -> Record<string, string>` | Nested object -> `UPPER_SNAKE_CASE` env vars |
-| `renderChart` | `(chart, release, ns, computed, overrides?, options?) -> V` | Merge values + instantiate `Helm` construct. `options` supports `helmFlags` (e.g. `['--repo', url]`) and `version`. |
+| `renderChart` | `(chart, release, ns, computed, overrides?, options?) -> V` | Merge values + instantiate `Helm` construct. `options` supports `repo`, `helmFlags`, and `version`. |
 
 **Invariants:**
 - `renderChart` always deep-merges `props.values` (user overrides) on top of computed values
 - `flattenToEnv` skips `null`/`undefined` values; arrays are stringified
-- Helm-backed chart constructs may expose an optional chart `version` prop. When
-  present, it is passed to Helm; applications own those pins.
+- Chart constructs accept optional `chart`, `repo`, `version`, and `values`
+  props where applicable. They provide default chart refs, but applications own
+  deploy-time refs, repository URLs, version pins, and value overrides.
 
 ### 3.2 Litellm Construct
 
@@ -97,6 +102,7 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 | `proxyConfig` | `LitellmProxyConfig` | yes | Full proxy config (model_list, settings, etc.) |
 | `virtualKeys` | `LitellmVirtualKey[]` | no | Keys to provision via API after startup |
 | `callbacks` | `{ mountPath, files }` | no | Python callbacks mounted via ConfigMap with subPath |
+| `chart` | `string` | no | Helm chart ref; defaults to the upstream OCI chart |
 | `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<LitellmValues>` | no | Raw Helm value overrides |
 
@@ -126,6 +132,7 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 |------|------|----------|---------|
 | `namespace` | `string` | yes | K8s namespace |
 | `api` | `HindsightApiConfig` | no | Nested config, auto-flattened to `HINDSIGHT_API_*` env vars |
+| `chart` | `string` | no | Helm chart ref; defaults to the upstream OCI chart |
 | `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<HindsightValues>` | no | Raw Helm value overrides |
 
@@ -231,11 +238,13 @@ Composes LiteLLM + Plane CE with:
 
 Wraps the [Headlamp](https://headlamp.dev/) Helm chart — a modern Kubernetes Dashboard from `kubernetes-sigs`. Single-container deployment with cluster-admin RBAC.
 
-**Chart:** `headlamp` from `https://kubernetes-sigs.github.io/headlamp/` (non-OCI, uses `helmFlags`)
+**Chart:** `headlamp` from `https://kubernetes-sigs.github.io/headlamp/` (non-OCI, uses `repo`)
 
 | Prop | Type | Required | Purpose |
 |------|------|----------|---------|
 | `namespace` | `string` | yes | K8s namespace |
+| `chart` | `string` | no | Helm chart name/ref; defaults to `headlamp` |
+| `repo` | `string` | no | Helm repository URL |
 | `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<HeadlampValues>` | no | Raw Helm value overrides |
 
@@ -250,7 +259,7 @@ Wraps the [Headlamp](https://headlamp.dev/) Helm chart — a modern Kubernetes D
 
 Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) Helm chart for in-cluster Kubernetes executor runners.
 
-**Chart:** `gitlab-runner` from `https://charts.gitlab.io` (non-OCI, uses `helmFlags`)
+**Chart:** `gitlab-runner` from `https://charts.gitlab.io` (non-OCI, uses `repo`)
 
 | Prop | Type | Required | Purpose |
 |------|------|----------|---------|
@@ -259,6 +268,8 @@ Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) He
 | `runnerSecretName` | `string` | yes | Existing Kubernetes Secret containing the runner token |
 | `jobNamespace` | `string` | no | Namespace where runner jobs execute (default: `namespace`) |
 | `defaultJobImage` | `string` | no | Default Kubernetes executor image (default: `node:22`) |
+| `chart` | `string` | no | Helm chart ref; defaults to `gitlab-runner` |
+| `repo` | `string` | no | Helm repository URL; defaults to `https://charts.gitlab.io` |
 | `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<GitlabRunnerValues>` | no | Raw Helm value overrides |
 
@@ -274,6 +285,29 @@ Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) He
 3. Builds a default Kubernetes executor TOML config using `gitlabUrl` as `clone_url`.
 4. Enables RBAC for pods, attach/exec, logs, secrets, serviceaccounts, services, and events in the core API group.
 5. Exposes `deploymentName` based on the chart fullname helper (`{release}-{chart}` by default; `fullnameOverride` or `nameOverride` may change it).
+
+### 3.9 Kodus Construct
+
+**Package**: `@cdk8s-charts/kodus`
+
+Wraps the upstream Kodus self-hosted Helm chart consumed from the application
+repository's `vendor/kodus-installer` submodule. The construct owns only typed
+deployment defaults and local exposure Services; it does not modify the
+upstream chart.
+
+| Prop | Type | Required | Purpose |
+|------|------|----------|---------|
+| `namespace` | `string` | yes | K8s namespace |
+| `chart` | `string` | yes | Local or published Kodus Helm chart path/ref |
+| `imageTag` | `string` | yes | Pinned Kodus app image tag |
+| `llm.baseUrl` | `string` | yes | OpenAI-compatible LiteLLM URL |
+| `llm.apiKey` | `string` | yes | Secret value passed to Kodus |
+| `llm.model` | `string` | yes | LiteLLM model alias |
+| `values` | `DeepPartial<KodusValues>` | no | Raw upstream chart overrides |
+
+The construct exports `webHost`, `webPort`, `apiHost`, `apiPort`, and
+`webhooksHost`/`webhooksPort`. It creates additional `LoadBalancer` Services
+because the upstream chart's internal Services intentionally remain `ClusterIP`.
 
 ## 4. Memory bank configuration
 

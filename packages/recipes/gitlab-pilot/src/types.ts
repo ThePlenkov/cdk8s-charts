@@ -57,6 +57,10 @@ export interface GitlabPilotProps {
     callbacks?: { mountPath: string; files: Record<string, string> };
     /** Virtual keys for downstream services (e.g. Hindsight). */
     virtualKeys?: LitellmVirtualKey[];
+    /** Helm chart ref. Defaults to the LiteLLM chart's built-in ref. */
+    chart?: string;
+    /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
+    version?: string;
     /** Helm value overrides. */
     values?: DeepPartial<LitellmValues>;
   };

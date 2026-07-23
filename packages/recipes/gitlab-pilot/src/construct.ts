@@ -93,6 +93,8 @@ export class GitlabPilot extends Construct {
       envSecretNames: props.litellm.envSecretNames,
       callbacks: props.litellm.callbacks,
       virtualKeys: props.litellm.virtualKeys,
+      chart: props.litellm.chart,
+      version: props.litellm.version,
       values: props.litellm.values
         ? deepMerge(litellmBaseValues, props.litellm.values)
         : litellmBaseValues,

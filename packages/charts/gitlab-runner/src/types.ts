@@ -46,6 +46,10 @@ export interface GitlabRunnerProps {
   runnerSecretName: string;
   jobNamespace?: string;
   defaultJobImage?: string;
+  /** Helm chart ref. Defaults to gitlab-runner. */
+  chart?: string;
+  /** Helm repository URL for the chart. Defaults to the GitLab chart repo. */
+  repo?: string;
   /** Optional Helm chart version pin. Omit to let Helm resolve the latest chart. */
   version?: string;
   values?: DeepPartial<GitlabRunnerValues>;
