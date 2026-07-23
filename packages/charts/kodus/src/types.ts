@@ -3,6 +3,7 @@ import type { DeepPartial, ResourceRequirements } from '@cdk8s-charts/utils';
 export interface KodusServiceValues {
   enabled?: boolean;
   port?: number;
+  containerPort?: number;
   replicas?: number;
   image?: { repository?: string; tag?: string; pullPolicy?: string };
   env?: Record<string, string>;

@@ -20,6 +20,30 @@ export class Kodus extends HelmConstruct<KodusValues> {
   constructor(scope: Construct, id: string, props: KodusProps) {
     super(scope, id);
 
+    const config = this.flattenToEnv(
+      {
+        web: {
+          hostname_api: `${id}-api`,
+          port_api: TARGET_PORTS.api,
+          port: TARGET_PORTS.web,
+        },
+        api: {
+          frontend_url: `http://${id}-web:${TARGET_PORTS.web}`,
+          cloud: { mode: false },
+          database: { env: 'development', disable_ssl: true },
+          log: { pretty: true },
+          openai: { force_base_url: props.llm.baseUrl },
+          llm: { provider_model: props.llm.model },
+          gitlab: { code_management_webhook: props.webhookUrl ?? '' },
+        },
+        nextauth: { url: `http://localhost:${props.expose?.webPort ?? PUBLIC_PORTS.web}` },
+      },
+      '',
+    );
+
+    // Upstream Kodus reads this exact env var name (OPEN_AI with underscore).
+    const secrets = this.flattenToEnv({ api: { open_ai: { api_key: props.llm.apiKey } } }, '');
+
     const values: KodusValues = {
       platform: 'kubernetes',
       imageTag: props.imageTag,
@@ -27,24 +51,8 @@ export class Kodus extends HelmConstruct<KodusValues> {
       global: {
         labels: { 'kodus.io/environment': 'development', 'kodus.io/team': 'yoda' },
         autoGenerateSecrets: true,
-        secrets: {
-          // Upstream Kodus reads this exact env var name (OPEN_AI with underscore).
-          API_OPEN_AI_API_KEY: props.llm.apiKey,
-        },
-        config: {
-          WEB_HOSTNAME_API: `${id}-api`,
-          WEB_PORT_API: TARGET_PORTS.api,
-          WEB_PORT: TARGET_PORTS.web,
-          NEXTAUTH_URL: `http://localhost:${props.expose?.webPort ?? PUBLIC_PORTS.web}`,
-          API_FRONTEND_URL: `http://${id}-web:${TARGET_PORTS.web}`,
-          API_DATABASE_ENV: 'development',
-          API_DATABASE_DISABLE_SSL: true,
-          API_CLOUD_MODE: false,
-          API_LOG_PRETTY: true,
-          API_OPENAI_FORCE_BASE_URL: props.llm.baseUrl,
-          API_LLM_PROVIDER_MODEL: props.llm.model,
-          API_GITLAB_CODE_MANAGEMENT_WEBHOOK: props.webhookUrl ?? '',
-        },
+        secrets,
+        config,
       },
       services: {
         web: { enabled: true, replicas: 1 },
@@ -69,7 +77,13 @@ export class Kodus extends HelmConstruct<KodusValues> {
       rabbitmq: { persistence: { enabled: true, size: '2Gi' } },
     };
 
-    this.renderChart(props.chart, id, props.namespace, values, props.values);
+    const finalValues = this.renderChart(props.chart, id, props.namespace, values, props.values);
+
+    const targetPorts = {
+      web: finalValues.services?.web?.containerPort ?? TARGET_PORTS.web,
+      api: finalValues.services?.api?.containerPort ?? TARGET_PORTS.api,
+      webhooks: finalValues.services?.webhooks?.containerPort ?? TARGET_PORTS.webhooks,
+    };
 
     const publicPorts = {
       web: props.expose?.webPort ?? PUBLIC_PORTS.web,
@@ -77,14 +91,14 @@ export class Kodus extends HelmConstruct<KodusValues> {
       webhooks: props.expose?.webhooksPort ?? PUBLIC_PORTS.webhooks,
     };
 
-    this.createPublicService(id, 'web', props.namespace, publicPorts.web, TARGET_PORTS.web);
-    this.createPublicService(id, 'api', props.namespace, publicPorts.api, TARGET_PORTS.api);
+    this.createPublicService(id, 'web', props.namespace, publicPorts.web, targetPorts.web);
+    this.createPublicService(id, 'api', props.namespace, publicPorts.api, targetPorts.api);
     this.createPublicService(
       id,
       'webhooks',
       props.namespace,
       publicPorts.webhooks,
-      TARGET_PORTS.webhooks,
+      targetPorts.webhooks,
     );
 
     this.exports = {

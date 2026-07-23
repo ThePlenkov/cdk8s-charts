@@ -36,9 +36,11 @@ function resolveChart(chart: string, version?: string): { chart: string; fromCac
       console.log(`[helm-cache] ${chart}@${version} -> ${resolved}`);
       return { chart: resolved, fromCache: true };
     }
+    // Exact pinned version is not cached; let Helm fetch the requested version.
+    return { chart, fromCache: false };
   }
 
-  // Otherwise pick the latest cached version (lexicographic sort)
+  // No version pinned: pick the latest cached version (lexicographic sort)
   const matches = files.filter((f) => f.startsWith(`${chartName}-`) && f.endsWith('.tgz')).sort();
   if (matches.length > 0) {
     const resolved = join(HELM_CACHE_DIR, matches[matches.length - 1]);
@@ -138,13 +140,16 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
     const values = overrides ? deepMerge(computed, overrides) : computed;
 
     const { chart: resolved, fromCache } = resolveChart(chart, options?.version);
-    const helmFlags = [
-      ...(options?.repo ? ['--repo', options.repo] : []),
-      ...(options?.helmFlags ?? []),
-    ];
+    const isOci = chart.startsWith('oci://');
+    const repoFlags = options?.repo && !isOci ? ['--repo', options.repo] : [];
+    const helmFlags = [...repoFlags, ...(options?.helmFlags ?? [])];
     // When using a local .tgz: version is already baked in, --repo is irrelevant
     const flags = fromCache
-      ? helmFlags.filter((f, i, arr) => f !== '--repo' && arr[i - 1] !== '--repo')
+      ? helmFlags.filter((f, i, arr) => {
+          if (f === '--repo' || f.startsWith('--repo=')) return false;
+          if (i > 0 && arr[i - 1] === '--repo') return false;
+          return true;
+        })
       : helmFlags;
 
     new Helm(this, 'chart', {
