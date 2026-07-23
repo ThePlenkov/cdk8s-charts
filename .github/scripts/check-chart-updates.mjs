@@ -17,6 +17,25 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+function getRepoSlug() {
+  if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY;
+  try {
+    const url = run('git', ['remote', 'get-url', 'origin'], {
+      cwd: REPO_ROOT,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
+    const match = url.match(/github\.com[:/](.+?)(?:\.git)?$/);
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function repoArgs() {
+  const slug = getRepoSlug();
+  return slug ? ['--repo', slug] : [];
+}
+
 function helmLatestVersion(chart, repo) {
   const args = ['show', 'chart', chart];
   if (repo) args.push('--repo', repo);
@@ -26,24 +45,46 @@ function helmLatestVersion(chart, repo) {
   return match[1].trim();
 }
 
-function issueExists(title) {
+function findOpenIssues(name) {
+  const searchQuery = `Update ${name} to`;
   try {
     const output = run('gh', [
-      'issue',
-      'list',
-      '--search',
-      title,
+      'search',
+      'issues',
+      searchQuery,
+      ...repoArgs(),
+      '--state',
+      'open',
+      '--match',
+      'title',
+      '--sort',
+      'updated',
+      '--order',
+      'desc',
       '--limit',
-      '1',
+      '10',
       '--json',
-      'number',
-      '--jq',
-      'length',
+      'number,title,updatedAt',
     ]);
-    return (parseInt(output.trim(), 10) || 0) > 0;
+    return JSON.parse(output);
   } catch {
-    return false;
+    return [];
   }
+}
+
+function closeIssue(number) {
+  if (DRY_RUN) {
+    console.log(`[dry-run] would close duplicate issue #${number}`);
+    return;
+  }
+  run('gh', [
+    'issue',
+    'close',
+    String(number),
+    ...repoArgs(),
+    '--comment',
+    'Superseded by a newer version update.',
+  ]);
 }
 
 function createIssue(name, version, chart, repo) {
@@ -68,8 +109,60 @@ function createIssue(name, version, chart, repo) {
     return;
   }
 
-  run('gh', ['issue', 'create', '--title', title, '--body', body]);
-  console.log(`  created issue: ${title}`);
+  const output = run('gh', ['issue', 'create', '--title', title, '--body', body, ...repoArgs()]);
+  console.log(`  created issue: ${title} (${output.trim()})`);
+}
+
+function updateIssue(number, name, version, chart, repo) {
+  const title = `Update ${name} to ${version}`;
+  const ref = repo ? `${chart} --repo ${repo}` : chart;
+  const body = [
+    `A new upstream Helm chart version is available for **${name}**: \`${version}\`.`,
+    '',
+    '**Chart reference:**',
+    `\`${ref}\``,
+    '',
+    'Next steps (manual):',
+    `1. Inspect the new Helm values: \`helm show values ${ref}\``,
+    `2. Update \`packages/charts/${name}/src/construct.ts\` and regenerate types if the schema changed.`,
+    '3. Run the build and example to verify the updated chart still synthesizes.',
+    '',
+    '<!-- chart-update -->',
+  ].join('\n');
+
+  if (DRY_RUN) {
+    console.log(`[dry-run] would update issue #${number}: ${title}`);
+    return;
+  }
+
+  run('gh', ['issue', 'edit', String(number), '--title', title, '--body', body, ...repoArgs()]);
+  console.log(`  updated issue #${number}: ${title}`);
+}
+
+function processChart(chart, version) {
+  const title = `Update ${chart.name} to ${version}`;
+  const issues = findOpenIssues(chart.name);
+
+  // No open issue -> create one.
+  if (issues.length === 0) {
+    createIssue(chart.name, version, chart.chart, chart.repo);
+    return;
+  }
+
+  // Keep the most recently updated issue and close any duplicates.
+  const [primary, ...duplicates] = issues;
+  for (const duplicate of duplicates) {
+    console.log(`  closing duplicate issue #${duplicate.number} for ${chart.name}`);
+    closeIssue(duplicate.number);
+  }
+
+  // If the primary issue already points to the current version, nothing to do.
+  if (primary.title === title) {
+    console.log(`  issue already up to date: ${title}`);
+    return;
+  }
+
+  updateIssue(primary.number, chart.name, version, chart.chart, chart.repo);
 }
 
 function warnAboutUnindexedCharts(indexed) {
@@ -95,15 +188,7 @@ async function main() {
     try {
       const version = helmLatestVersion(chart.chart, chart.repo);
       console.log(`${chart.name}: ${version}`);
-      if (DRY_RUN) {
-        createIssue(chart.name, version, chart.chart, chart.repo);
-        continue;
-      }
-      if (issueExists(`Update ${chart.name} to ${version}`)) {
-        console.log(`  issue already exists for ${chart.name}@${version}`);
-        continue;
-      }
-      createIssue(chart.name, version, chart.chart, chart.repo);
+      processChart(chart, version);
     } catch (error) {
       console.error(`${chart.name}: ${error.message}`);
     }
