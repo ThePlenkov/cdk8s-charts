@@ -259,7 +259,7 @@ Wraps the [Headlamp](https://headlamp.dev/) Helm chart — a modern Kubernetes D
 
 Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) Helm chart for in-cluster Kubernetes executor runners.
 
-**Chart:** `gitlab-runner` from `https://charts.gitlab.io` (non-OCI, uses `helmFlags`)
+**Chart:** `gitlab-runner` from `https://charts.gitlab.io` (non-OCI, uses `repo`)
 
 | Prop | Type | Required | Purpose |
 |------|------|----------|---------|
@@ -268,6 +268,8 @@ Wraps the [GitLab Runner](https://docs.gitlab.com/runner/install/kubernetes/) He
 | `runnerSecretName` | `string` | yes | Existing Kubernetes Secret containing the runner token |
 | `jobNamespace` | `string` | no | Namespace where runner jobs execute (default: `namespace`) |
 | `defaultJobImage` | `string` | no | Default Kubernetes executor image (default: `node:22`) |
+| `chart` | `string` | no | Helm chart ref; defaults to `gitlab-runner` |
+| `repo` | `string` | no | Helm repository URL; defaults to `https://charts.gitlab.io` |
 | `version` | `string` | no | Helm chart version pin |
 | `values` | `DeepPartial<GitlabRunnerValues>` | no | Raw Helm value overrides |
 

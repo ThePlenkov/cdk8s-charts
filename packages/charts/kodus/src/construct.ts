@@ -1,7 +1,6 @@
-import { ApiObject } from 'cdk8s';
-import { Construct } from 'constructs';
-
 import { HelmConstruct } from '@cdk8s-charts/utils';
+import { ApiObject } from 'cdk8s';
+import type { Construct } from 'constructs';
 import type { KodusExports, KodusProps, KodusValues } from './types';
 
 const TARGET_PORTS = { web: 3000, api: 3001, webhooks: 3332 } as const;
@@ -29,6 +28,7 @@ export class Kodus extends HelmConstruct<KodusValues> {
         labels: { 'kodus.io/environment': 'development', 'kodus.io/team': 'yoda' },
         autoGenerateSecrets: true,
         secrets: {
+          // Upstream Kodus reads this exact env var name (OPEN_AI with underscore).
           API_OPEN_AI_API_KEY: props.llm.apiKey,
         },
         config: {
@@ -111,9 +111,11 @@ export class Kodus extends HelmConstruct<KodusValues> {
       spec: {
         type: 'LoadBalancer',
         selector: {
-          'app.kubernetes.io/name': service,
+          // Match the Kodus Helm chart's component selector labels.
+          // Chart name defaults to 'kodus'; component is the service name.
+          'app.kubernetes.io/name': 'kodus',
           'app.kubernetes.io/instance': id,
-          'app.kubernetes.io/part-of': 'kodus',
+          'app.kubernetes.io/component': service,
         },
         ports: [{ name: 'http', port, targetPort, protocol: 'TCP' }],
       },
