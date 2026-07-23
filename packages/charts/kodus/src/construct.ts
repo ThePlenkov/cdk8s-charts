@@ -20,15 +20,22 @@ export class Kodus extends HelmConstruct<KodusValues> {
   constructor(scope: Construct, id: string, props: KodusProps) {
     super(scope, id);
 
+    // Resolve effective container ports so env config and public Service targetPort
+    // stay in sync when the user overrides services.*.containerPort.
+    const webContainerPort = props.values?.services?.web?.containerPort ?? TARGET_PORTS.web;
+    const apiContainerPort = props.values?.services?.api?.containerPort ?? TARGET_PORTS.api;
+    const webhooksContainerPort =
+      props.values?.services?.webhooks?.containerPort ?? TARGET_PORTS.webhooks;
+
     const config = this.flattenToEnv(
       {
         web: {
           hostname_api: `${id}-api`,
-          port_api: TARGET_PORTS.api,
-          port: TARGET_PORTS.web,
+          port_api: apiContainerPort,
+          port: webContainerPort,
         },
         api: {
-          frontend_url: `http://${id}-web:${TARGET_PORTS.web}`,
+          frontend_url: `http://${id}-web:${webContainerPort}`,
           cloud: { mode: false },
           database: { env: 'development', disable_ssl: true },
           log: { pretty: true },
@@ -55,10 +62,10 @@ export class Kodus extends HelmConstruct<KodusValues> {
         config,
       },
       services: {
-        web: { enabled: true, replicas: 1 },
-        api: { enabled: true, replicas: 1 },
+        web: { enabled: true, replicas: 1, containerPort: webContainerPort },
+        api: { enabled: true, replicas: 1, containerPort: apiContainerPort },
         worker: { enabled: true, replicas: 1 },
-        webhooks: { enabled: true, replicas: 1 },
+        webhooks: { enabled: true, replicas: 1, containerPort: webhooksContainerPort },
         'mcp-manager': { enabled: false },
       },
       migrations: {
