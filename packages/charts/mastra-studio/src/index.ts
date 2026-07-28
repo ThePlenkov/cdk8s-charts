@@ -1,2 +1,9 @@
 export { MastraStudio } from './construct';
-export type { MastraStudioExports, MastraStudioProps } from './types';
+export type {
+  Exports,
+  MastraStudioExports,
+  MastraStudioProps,
+  MastraStudioValues,
+  Props,
+  Values,
+} from './types';

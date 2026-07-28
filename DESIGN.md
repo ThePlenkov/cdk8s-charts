@@ -45,6 +45,9 @@ cdk8s-charts/
       kodus/                        @cdk8s-charts/kodus
         src/types.ts                Kodus Helm values + Props/Exports
         src/construct.ts            Kodus construct with local K3s exposure
+      mastra-studio/                @cdk8s-charts/mastra-studio
+        src/types.ts                Mastra Studio Helm values + Props/Exports
+        src/construct.ts            MastraStudio construct (Deployment + Service)
     recipes/
       hindsight-litellm/            @cdk8s-charts/hindsight-litellm
         src/construct.ts            Composed stack with auto cross-wiring
@@ -64,6 +67,7 @@ utils  <--  redis
 utils  <--  headlamp
 utils  <--  gitlab-runner
 utils  <--  kodus
+utils  <--  mastra-studio
 utils + litellm + hindsight  <--  hindsight-litellm
 utils + litellm + plane-ce   <--  litellm-plane
 hindsight-litellm  <--  examples/coding-agent-memory
@@ -308,6 +312,42 @@ upstream chart.
 The construct exports `webHost`, `webPort`, `apiHost`, `apiPort`, and
 `webhooksHost`/`webhooksPort`. It creates additional `LoadBalancer` Services
 because the upstream chart's internal Services intentionally remain `ClusterIP`.
+
+### 3.10 Mastra Studio Construct
+
+**Package**: `@cdk8s-charts/mastra-studio`
+
+Deploys a standalone [Mastra Studio](https://mastra.ai/docs/studio/overview) UI service that connects to an existing Mastra server (for example, `@cdk8s-charts/mastra`).
+
+**Props** (`Props`):
+
+| Prop | Type | Required | Purpose |
+|------|------|----------|---------|
+| `namespace` | `string` | yes | K8s namespace |
+| `serverHost` | `string` | yes | Mastra server service DNS name inside the cluster/compose network |
+| `serverPort` | `number` | yes | Mastra server port |
+| `studioPort` | `number` | no | Studio UI port (default: `3000`) |
+| `serviceType` | `'ClusterIP' \| 'NodePort' \| 'LoadBalancer'` | no | K8s Service type (default: `LoadBalancer`) |
+| `image` | `string` | no | Node base image, or a prebuilt image that already contains the Mastra CLI (default: `node:22-bookworm-slim`) |
+| `mastraVersion` | `string` | no | Pinned Mastra version to install when the image does not contain the CLI (default: `1.20.2`) |
+| `command` | `string[]` | no | Container command override |
+| `args` | `string[]` | no | Container arguments override |
+| `values` | `DeepPartial<MastraStudioValues>` | no | Raw Helm-style value overrides (deep-merged into computed defaults) |
+
+**Exports** (`Exports`):
+
+| Export | Type | Value |
+|--------|------|-------|
+| `host` | `string` | Service DNS name |
+| `port` | `number` | `studioPort` |
+| `url` | `string` | `http://{host}:{port}` |
+
+**Implementation notes:**
+
+- Extends `HelmConstruct<MastraStudioValues>` and uses `deepMerge` to merge `props.values` with computed defaults.
+- Creates a Deployment with a readiness probe and a Service.
+- Sets the `composed.docker-x/depends-on` pod annotation so Studio starts after the Mastra server is healthy in compose projections.
+- The default startup script installs a pinned `mastra` version and runs `mastra studio` against the configured server. For prebuilt images, set `command`/`args` to invoke the baked CLI directly.
 
 ## 4. Memory bank configuration
 
