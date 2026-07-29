@@ -13,6 +13,7 @@ import type {
   LitellmMsCallbacksProps,
   LitellmMsDatabaseEndpoint,
   LitellmMsDatabaseProps,
+  LitellmMsEnvVar,
   LitellmMsExports,
   LitellmMsPostgresqlValues,
   LitellmMsProps,
@@ -22,6 +23,7 @@ import type {
 
 const DEFAULT_CHART = 'oci://ghcr.io/berriai/litellm/chart/litellm';
 const DEFAULT_POSTGRES_CHART = 'oci://registry-1.docker.io/bitnamicharts/postgresql';
+const CURL_IMAGE = 'curlimages/curl:8.12.1';
 
 const WAIT_FOR_LITELLM_SCRIPT = readFileSync(
   new URL('./scripts/wait-for-litellm.sh', import.meta.url),
@@ -174,6 +176,20 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     });
   }
 
+  private createConfigMap(
+    logicalId: string,
+    name: string,
+    namespace: string,
+    data: Record<string, string>,
+  ): void {
+    new ApiObject(this, logicalId, {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: { name, namespace },
+      data,
+    });
+  }
+
   private createMasterAndRedisSecrets(
     namespace: string,
     props: LitellmMsProps,
@@ -300,12 +316,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     }
 
     const callbacksName = `${id}-callbacks`;
-    new ApiObject(this, 'callbacks', {
-      apiVersion: 'v1',
-      kind: 'ConfigMap',
-      metadata: { name: callbacksName, namespace },
-      data: callbacks.files,
-    });
+    this.createConfigMap('callbacks', callbacksName, namespace, callbacks.files);
     gatewayVolumes.push({ name: 'callbacks', configMap: { name: callbacksName } });
     for (const fileName of Object.keys(callbacks.files)) {
       gatewayMounts.push({
@@ -438,6 +449,22 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     return fullname;
   }
 
+  private createCurlContainer(
+    name: string,
+    script: string,
+    baseUrl: string,
+    extraEnv: LitellmMsEnvVar[],
+    volumeMounts: VolumeMount[],
+  ) {
+    return {
+      name,
+      image: CURL_IMAGE,
+      command: ['sh', `/scripts/${script}`],
+      env: [{ name: 'LITELLM_BASE_URL', value: baseUrl }, ...extraEnv],
+      volumeMounts,
+    };
+  }
+
   private createKeyProvisioningJob(
     releaseName: string,
     namespace: string,
@@ -463,22 +490,41 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       keySpecs.push(`${vk.alias}\t${fileName}`);
     });
 
-    new ApiObject(this, 'provision-scripts', {
-      apiVersion: 'v1',
-      kind: 'ConfigMap',
-      metadata: { name: scriptConfigMapName, namespace },
-      data: {
-        'wait-for-litellm.sh': WAIT_FOR_LITELLM_SCRIPT,
-        'provision-keys.sh': PROVISION_KEYS_SCRIPT,
-      },
+    this.createConfigMap('provision-scripts', scriptConfigMapName, namespace, {
+      'wait-for-litellm.sh': WAIT_FOR_LITELLM_SCRIPT,
+      'provision-keys.sh': PROVISION_KEYS_SCRIPT,
     });
+    this.createSecret('provision-data', payloadSecretName, namespace, payloadFiles);
 
-    new ApiObject(this, 'provision-data', {
-      apiVersion: 'v1',
-      kind: 'Secret',
-      metadata: { name: payloadSecretName, namespace },
-      stringData: payloadFiles,
-    });
+    const scriptVolumeMount: VolumeMount = {
+      name: 'provision-scripts',
+      mountPath: '/scripts',
+      readOnly: true,
+    };
+    const waitContainer = this.createCurlContainer(
+      'wait-for-litellm',
+      'wait-for-litellm.sh',
+      baseUrl,
+      [
+        { name: 'LITELLM_WAIT_RETRIES', value: '60' },
+        { name: 'LITELLM_WAIT_SLEEP_SECONDS', value: '5' },
+      ],
+      [scriptVolumeMount],
+    );
+    const provisionContainer = this.createCurlContainer(
+      'provision',
+      'provision-keys.sh',
+      baseUrl,
+      [
+        {
+          name: 'LITELLM_MASTER_KEY',
+          valueFrom: { secretKeyRef: { name: masterSecretName, key: 'master-key' } },
+        },
+        { name: 'LITELLM_KEY_SPECS', value: keySpecs.join('\n') },
+        { name: 'LITELLM_KEY_DIR', value: '/keys' },
+      ],
+      [scriptVolumeMount, { name: 'provision-data', mountPath: '/keys', readOnly: true }],
+    );
 
     new ApiObject(this, 'provision-keys', {
       apiVersion: 'batch/v1',
@@ -496,41 +542,8 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
         ttlSecondsAfterFinished: 300,
         template: {
           spec: {
-            initContainers: [
-              {
-                name: 'wait-for-litellm',
-                image: 'curlimages/curl:8.12.1',
-                command: ['sh', '/scripts/wait-for-litellm.sh'],
-                env: [
-                  { name: 'LITELLM_BASE_URL', value: baseUrl },
-                  { name: 'LITELLM_WAIT_RETRIES', value: '60' },
-                  { name: 'LITELLM_WAIT_SLEEP_SECONDS', value: '5' },
-                ],
-                volumeMounts: [
-                  { name: 'provision-scripts', mountPath: '/scripts', readOnly: true },
-                ],
-              },
-            ],
-            containers: [
-              {
-                name: 'provision',
-                image: 'curlimages/curl:8.12.1',
-                command: ['sh', '/scripts/provision-keys.sh'],
-                env: [
-                  { name: 'LITELLM_BASE_URL', value: baseUrl },
-                  {
-                    name: 'LITELLM_MASTER_KEY',
-                    valueFrom: { secretKeyRef: { name: masterSecretName, key: 'master-key' } },
-                  },
-                  { name: 'LITELLM_KEY_SPECS', value: keySpecs.join('\n') },
-                  { name: 'LITELLM_KEY_DIR', value: '/keys' },
-                ],
-                volumeMounts: [
-                  { name: 'provision-scripts', mountPath: '/scripts', readOnly: true },
-                  { name: 'provision-data', mountPath: '/keys', readOnly: true },
-                ],
-              },
-            ],
+            initContainers: [waitContainer],
+            containers: [provisionContainer],
             restartPolicy: 'OnFailure',
             volumes: [
               {

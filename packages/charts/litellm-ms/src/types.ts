@@ -153,76 +153,40 @@ export interface LitellmMsProbeConfig {
   failureThreshold?: number;
 }
 
-export interface LitellmMsGatewayConfig {
+export interface LitellmMsComponentConfig {
   enabled?: boolean;
   logLevel?: string;
-  numWorkers?: number;
   extraEnv?: LitellmMsEnvVar[];
   envConfigMaps?: string[];
   envSecrets?: string[];
   volumes?: Volume[];
   volumeMounts?: VolumeMount[];
+  image?: ImageConfig;
+  service?: ServiceConfig;
+  resources?: ResourceRequirements;
+  livenessProbe?: LitellmMsProbeConfig;
+  readinessProbe?: LitellmMsProbeConfig;
+  hpa?: AutoscalingConfig;
+  pdb?: PodDisruptionBudgetConfig;
+  podAnnotations?: Record<string, string>;
+  nodeSelector?: Record<string, string>;
+  tolerations?: unknown[];
+  affinity?: unknown;
+  topologySpreadConstraints?: TopologySpreadConstraint[];
+}
+
+export interface LitellmMsGatewayConfig extends LitellmMsComponentConfig {
+  numWorkers?: number;
   config?: {
     create?: boolean;
     proxy_config?: LitellmMsProxyConfig;
   };
-  image?: ImageConfig;
-  service?: ServiceConfig;
-  resources?: ResourceRequirements;
-  livenessProbe?: LitellmMsProbeConfig;
-  readinessProbe?: LitellmMsProbeConfig;
-  hpa?: AutoscalingConfig;
-  pdb?: PodDisruptionBudgetConfig;
-  podAnnotations?: Record<string, string>;
-  nodeSelector?: Record<string, string>;
-  tolerations?: unknown[];
-  affinity?: unknown;
-  topologySpreadConstraints?: TopologySpreadConstraint[];
 }
 
-export interface LitellmMsBackendConfig {
-  enabled?: boolean;
-  logLevel?: string;
-  extraEnv?: LitellmMsEnvVar[];
-  envConfigMaps?: string[];
-  envSecrets?: string[];
-  volumes?: Volume[];
-  volumeMounts?: VolumeMount[];
-  image?: ImageConfig;
-  service?: ServiceConfig;
-  resources?: ResourceRequirements;
-  livenessProbe?: LitellmMsProbeConfig;
-  readinessProbe?: LitellmMsProbeConfig;
-  hpa?: AutoscalingConfig;
-  pdb?: PodDisruptionBudgetConfig;
-  podAnnotations?: Record<string, string>;
-  nodeSelector?: Record<string, string>;
-  tolerations?: unknown[];
-  affinity?: unknown;
-  topologySpreadConstraints?: TopologySpreadConstraint[];
-}
+export interface LitellmMsBackendConfig extends LitellmMsComponentConfig {}
 
-export interface LitellmMsUiConfig {
-  enabled?: boolean;
-  logLevel?: string;
+export interface LitellmMsUiConfig extends LitellmMsComponentConfig {
   backendUrl?: string;
-  extraEnv?: LitellmMsEnvVar[];
-  envConfigMaps?: string[];
-  envSecrets?: string[];
-  volumes?: Volume[];
-  volumeMounts?: VolumeMount[];
-  image?: ImageConfig;
-  service?: ServiceConfig;
-  resources?: ResourceRequirements;
-  livenessProbe?: LitellmMsProbeConfig;
-  readinessProbe?: LitellmMsProbeConfig;
-  hpa?: AutoscalingConfig;
-  pdb?: PodDisruptionBudgetConfig;
-  podAnnotations?: Record<string, string>;
-  nodeSelector?: Record<string, string>;
-  tolerations?: unknown[];
-  affinity?: unknown;
-  topologySpreadConstraints?: TopologySpreadConstraint[];
 }
 
 export interface LitellmMsMigrationJobConfig {
