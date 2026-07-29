@@ -15,7 +15,7 @@ printf '%s\n' "${LITELLM_KEY_SPECS}" | while IFS="${tab}" read -r alias file_nam
   echo "Provisioning key: ${alias}"
   response_file="$(mktemp)"
   http_code="$(
-    curl -s -o "${response_file}" -w "%{http_code}" -X POST "${LITELLM_BASE_URL}/key/generate" \
+    curl -sS -o "${response_file}" -w "%{http_code}" --max-time 30 --connect-timeout 10 -X POST "${LITELLM_BASE_URL}/key/generate" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
       --data-binary "@${payload_file}"
@@ -23,13 +23,13 @@ printf '%s\n' "${LITELLM_KEY_SPECS}" | while IFS="${tab}" read -r alias file_nam
   body="$(cat "${response_file}")"
   rm -f "${response_file}"
 
-  echo "Response (${http_code}): ${body}"
   if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
     echo "Key ${alias} provisioned successfully"
-  elif printf '%s' "${body}" | grep -q "already exists"; then
+  elif [ "${http_code}" -eq 400 ] && printf '%s' "${body}" | grep -qi "already exists"; then
     echo "Key ${alias} already exists — skipping"
   else
-    echo "ERROR: Failed to provision key ${alias}" >&2
+    echo "ERROR: Failed to provision key ${alias} (HTTP ${http_code})" >&2
+    [ -n "${LITELLM_DEBUG:-}" ] && echo "${body}" >&2
     exit 1
   fi
 

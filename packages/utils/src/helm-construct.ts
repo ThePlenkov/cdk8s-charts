@@ -141,15 +141,15 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
   }
 
   /** Install a Helm chart under an explicit scope (for multi-chart constructs). */
-  protected renderChartOn(
+  protected renderChartOn<U extends Record<string, any>>(
     scope: Construct,
     chart: string,
     releaseName: string,
     namespace: string,
-    computed: V,
-    overrides?: DeepPartial<V>,
+    computed: U,
+    overrides?: DeepPartial<U>,
     options?: { helmFlags?: string[]; repo?: string; version?: string },
-  ): V {
+  ): U {
     const values = overrides ? deepMerge(computed, overrides) : computed;
 
     const { chart: resolved, fromCache } = resolveChart(chart, options?.version);

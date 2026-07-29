@@ -8,7 +8,7 @@ sleep_seconds="${LITELLM_WAIT_SLEEP_SECONDS:-5}"
 i=1
 
 while [ "$i" -le "$retries" ]; do
-  if curl -sf "${LITELLM_BASE_URL}/health/liveliness" >/dev/null; then
+  if curl -sf --max-time 30 --connect-timeout 10 "${LITELLM_BASE_URL}/health/readiness" >/dev/null; then
     echo "LiteLLM is ready"
     exit 0
   fi

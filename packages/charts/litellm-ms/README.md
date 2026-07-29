@@ -2,7 +2,7 @@
 
 Typed cdk8s construct for the **componentized** LiteLLM Helm chart:
 
-```
+```text
 oci://ghcr.io/berriai/litellm/chart/litellm
 ```
 
@@ -29,6 +29,9 @@ new LitellmMs(this, 'litellm', {
     port: redis.exports.port,
     password: redis.exports.password,
   },
+  database: {
+    password: process.env.LITELLM_DB_PASSWORD!,
+  },
 });
 ```
 
@@ -38,3 +41,23 @@ Exports:
 - `backendHost` / `backendPort` — management API (port 4001)
 - `uiHost` / `uiPort` — Admin UI (port 3000)
 - `host` / `port` — alias for gateway (compat with monolithic wiring)
+
+## Database
+
+By default an embedded Bitnami PostgreSQL release is deployed. Provide `database.password` when `database.enabled !== false`.
+
+To bring your own PostgreSQL, set `database.enabled: false` and supply `database.host` plus one of `database.password` or `database.existingSecret`:
+
+```typescript
+new LitellmMs(this, 'litellm', {
+  // ...
+  database: {
+    enabled: false,
+    host: 'my-postgres.my-namespace.svc.cluster.local',
+    port: 5432,
+    database: 'litellm',
+    username: 'litellm',
+    existingSecret: { name: 'litellm-db-credentials', usernameKey: 'username', passwordKey: 'password' },
+  },
+});
+```

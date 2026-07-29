@@ -144,7 +144,7 @@ Use `@cdk8s-charts/litellm` for the legacy monolithic `litellm-helm` chart.
 | `masterKey` | `string` | yes | LiteLLM admin/master key |
 | `proxyConfig` | `LitellmMsProxyConfig` | yes | Gateway `proxy_config` block |
 | `redis` | `{ host, port, password }` | yes | External Redis wiring |
-| `database` | `LitellmMsDatabaseProps` | no | Optional embedded Bitnami PostgreSQL (default: enabled) |
+| `database` | `LitellmMsDatabaseProps` | no | Embedded Bitnami PostgreSQL (default) or external PostgreSQL writer |
 | `saltKey` | `string` | no | `LITELLM_SALT_KEY` for credential encryption |
 | `callbacks` | `{ mountPath, files }` | no | Python callbacks mounted on the gateway |
 | `virtualKeys` | `LitellmMsVirtualKey[]` | no | Keys provisioned via backend management API |
@@ -161,10 +161,10 @@ Use `@cdk8s-charts/litellm` for the legacy monolithic `litellm-helm` chart.
 
 **Resources created:**
 
-1. Secrets for master key, Redis password, optional env/salt
-2. Optional Bitnami PostgreSQL release (`{id}-postgresql`)
+1. Secrets for master key, Redis password, optional env/salt, and database credentials
+2. Optional Bitnami PostgreSQL release (`{id}-postgresql`) or reference to an external writer
 3. Helm release for the componentized chart (gateway, backend, ui, migrations job)
-4. Optional virtual-key provisioning Job (targets backend)
+4. Optional virtual-key provisioning Job (targets backend; virtual-key payloads and master key are sourced from Secrets)
 
 ### 3.3 Hindsight Construct
 
