@@ -1,11 +1,17 @@
 import { readFileSync } from 'node:fs';
-import type { Volume, VolumeMount } from '@cdk8s-charts/utils';
+import type {
+  AutoscalingConfig,
+  ResourceRequirements,
+  Volume,
+  VolumeMount,
+} from '@cdk8s-charts/utils';
 import { HelmConstruct } from '@cdk8s-charts/utils';
 import { ApiObject } from 'cdk8s';
 import type { Construct as IConstruct } from 'constructs';
 import { Construct } from 'constructs';
 import type {
   LitellmMsCallbacksProps,
+  LitellmMsDatabaseEndpoint,
   LitellmMsDatabaseProps,
   LitellmMsExports,
   LitellmMsPostgresqlValues,
@@ -27,6 +33,16 @@ const PROVISION_KEYS_SCRIPT = readFileSync(
 );
 
 const CONFIGMAP_KEY_RE = /^[a-zA-Z0-9._-]+$/;
+
+const HPA_DISABLED: AutoscalingConfig = { enabled: false };
+const DEFAULT_RESOURCES: ResourceRequirements = {
+  requests: { cpu: '100m', memory: '512Mi' },
+  limits: { cpu: '1', memory: '2Gi' },
+};
+const UI_RESOURCES: ResourceRequirements = {
+  requests: { cpu: '50m', memory: '128Mi' },
+  limits: { cpu: '500m', memory: '512Mi' },
+};
 
 function validateCallbackFileNames(id: string, callbacks: LitellmMsCallbacksProps): void {
   for (const fileName of Object.keys(callbacks.files)) {
@@ -144,25 +160,28 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     }
   }
 
+  private createSecret(
+    logicalId: string,
+    name: string,
+    namespace: string,
+    stringData: Record<string, string>,
+  ): void {
+    new ApiObject(this, logicalId, {
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name, namespace },
+      stringData,
+    });
+  }
+
   private createMasterAndRedisSecrets(
     namespace: string,
     props: LitellmMsProps,
     masterSecret: string,
     redisSecret: string,
   ): void {
-    new ApiObject(this, 'masterkey', {
-      apiVersion: 'v1',
-      kind: 'Secret',
-      metadata: { name: masterSecret, namespace },
-      stringData: { 'master-key': props.masterKey },
-    });
-
-    new ApiObject(this, 'redis-secret', {
-      apiVersion: 'v1',
-      kind: 'Secret',
-      metadata: { name: redisSecret, namespace },
-      stringData: { password: props.redis.password },
-    });
+    this.createSecret('masterkey', masterSecret, namespace, { 'master-key': props.masterKey });
+    this.createSecret('redis-secret', redisSecret, namespace, { password: props.redis.password });
   }
 
   private createEnvSecretIfNeeded(
@@ -181,12 +200,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       return undefined;
     }
     const envSecret = `${id}-env`;
-    new ApiObject(this, 'env', {
-      apiVersion: 'v1',
-      kind: 'Secret',
-      metadata: { name: envSecret, namespace },
-      stringData: envStringData,
-    });
+    this.createSecret('env', envSecret, namespace, envStringData);
     return envSecret;
   }
 
@@ -198,11 +212,9 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
   ): string {
     const dbSecret = `${id}-db`;
     if (db.password) {
-      new ApiObject(this, 'db-secret', {
-        apiVersion: 'v1',
-        kind: 'Secret',
-        metadata: { name: dbSecret, namespace },
-        stringData: { username: dbUser, password: db.password },
+      this.createSecret('db-secret', dbSecret, namespace, {
+        username: dbUser,
+        password: db.password,
       });
     }
     return dbSecret;
@@ -327,7 +339,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       envSecrets.push(options.envSecretName);
     }
 
-    const dbWriter: import('./types').LitellmMsDatabaseEndpoint = {
+    const dbWriter: LitellmMsDatabaseEndpoint = {
       host: options.dbHost,
       port: props.database?.port ?? 5432,
       dbname: options.dbName ?? 'litellm',
@@ -360,28 +372,19 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
         envSecrets,
         ...gatewayExtra,
         service: { type: svcType, port: 4000 },
-        hpa: { enabled: false },
-        resources: {
-          requests: { cpu: '100m', memory: '512Mi' },
-          limits: { cpu: '1', memory: '2Gi' },
-        },
+        hpa: HPA_DISABLED,
+        resources: DEFAULT_RESOURCES,
       },
       backend: {
         envSecrets,
         service: { type: 'ClusterIP', port: 4001 },
-        hpa: { enabled: false },
-        resources: {
-          requests: { cpu: '100m', memory: '512Mi' },
-          limits: { cpu: '1', memory: '2Gi' },
-        },
+        hpa: HPA_DISABLED,
+        resources: DEFAULT_RESOURCES,
       },
       ui: {
         service: { type: svcType, port: 3000 },
-        hpa: { enabled: false },
-        resources: {
-          requests: { cpu: '50m', memory: '128Mi' },
-          limits: { cpu: '500m', memory: '512Mi' },
-        },
+        hpa: HPA_DISABLED,
+        resources: UI_RESOURCES,
       },
       migrationJob: { enabled: true },
     };
