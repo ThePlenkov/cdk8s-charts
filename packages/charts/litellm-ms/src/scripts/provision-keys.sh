@@ -8,6 +8,10 @@ set -eu
 key_dir="${LITELLM_KEY_DIR:-/keys}"
 tab="$(printf '\t')"
 
+response_file=""
+cleanup_response() { [ -n "${response_file}" ] && rm -f "${response_file}"; }
+trap cleanup_response EXIT
+
 printf '%s\n' "${LITELLM_KEY_SPECS}" | while IFS="${tab}" read -r alias file_name; do
   [ -n "${alias}" ] || continue
   payload_file="${key_dir}/${file_name}"
