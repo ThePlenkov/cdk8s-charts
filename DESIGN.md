@@ -25,6 +25,7 @@ cdk8s-charts/
       src/index.ts                  Barrel exports
     charts/
       litellm/                      @cdk8s-charts/litellm
+      litellm-ms/                   @cdk8s-charts/litellm-ms
         src/types.ts                Full LiteLLM Helm values + Props/Exports
         src/construct.ts            Litellm construct
       hindsight/                    @cdk8s-charts/hindsight
@@ -61,6 +62,7 @@ cdk8s-charts/
 
 ```
 utils  <--  litellm
+utils  <--  litellm-ms
 utils  <--  hindsight
 utils  <--  plane-ce
 utils  <--  redis
@@ -125,6 +127,44 @@ All chart constructs extend `HelmConstruct<V>` from `@cdk8s-charts/utils`:
 2. `ConfigMap` (`{id}-callbacks`) — Python files, subPath-mounted into `/etc/litellm/`
 3. `Helm` chart — with PostgreSQL + Redis subcharts enabled
 4. `Job` (`{id}-provision-keys`) — waits for health, then provisions virtual keys
+
+### 3.2.1 LitellmMs Construct
+
+**Package**: `@cdk8s-charts/litellm-ms`
+
+**Chart**: `oci://ghcr.io/berriai/litellm/chart/litellm` — the componentized deployment (gateway + backend + ui) from the [LiteLLM production Helm docs](https://docs.litellm.ai/docs/proxy/deploy#deploy-with-helm).
+
+Use `@cdk8s-charts/litellm` for the legacy monolithic `litellm-helm` chart.
+
+**Props** (`LitellmMsProps`):
+
+| Prop | Type | Required | Purpose |
+|------|------|----------|---------|
+| `namespace` | `string` | yes | K8s namespace |
+| `masterKey` | `string` | yes | LiteLLM admin/master key |
+| `proxyConfig` | `LitellmMsProxyConfig` | yes | Gateway `proxy_config` block |
+| `redis` | `{ host, port, password }` | yes | External Redis wiring |
+| `database` | `LitellmMsDatabaseProps` | no | Optional embedded Bitnami PostgreSQL (default: enabled) |
+| `saltKey` | `string` | no | `LITELLM_SALT_KEY` for credential encryption |
+| `callbacks` | `{ mountPath, files }` | no | Python callbacks mounted on the gateway |
+| `virtualKeys` | `LitellmMsVirtualKey[]` | no | Keys provisioned via backend management API |
+| `chart` / `version` / `values` | | no | Upstream chart ref and overrides |
+
+**Exports** (`LitellmMsExports`):
+
+| Export | Description |
+|--------|-------------|
+| `gatewayHost` / `gatewayPort` | LLM data plane (`/v1`, port 4000) |
+| `backendHost` / `backendPort` | Management API (port 4001) |
+| `uiHost` / `uiPort` | Admin UI (port 3000) |
+| `host` / `port` | Alias for gateway (monolithic wiring compat) |
+
+**Resources created:**
+
+1. Secrets for master key, Redis password, optional env/salt
+2. Optional Bitnami PostgreSQL release (`{id}-postgresql`)
+3. Helm release for the componentized chart (gateway, backend, ui, migrations job)
+4. Optional virtual-key provisioning Job (targets backend)
 
 ### 3.3 Hindsight Construct
 

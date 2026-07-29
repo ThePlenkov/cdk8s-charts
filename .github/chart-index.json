@@ -24,6 +24,10 @@
       "chart": "oci://ghcr.io/berriai/litellm-helm"
     },
     {
+      "name": "litellm-ms",
+      "chart": "oci://ghcr.io/berriai/litellm/chart/litellm"
+    },
+    {
       "name": "plane-ce",
       "chart": "plane-ce",
       "repo": "https://helm.plane.so/"
