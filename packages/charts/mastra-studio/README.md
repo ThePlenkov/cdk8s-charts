@@ -17,7 +17,7 @@ new MastraStudio(this, 'mastra-studio', {
 
 - `image` — Node base image, or a prebuilt image that already contains the Mastra CLI (default: `node:22-bookworm-slim`).
 - `mastraVersion` — Pinned Mastra version to install when the image does not contain the CLI (default: `1.20.2`).
-- `command`/`args` — Override the container command to use a prebuilt image directly.
+- `command`/`args` — Override the container startup. Set both together, or omit both to use the default shell startup script.
 - `values` — Raw value overrides (deep-merged into computed defaults).
 
 ```typescript

@@ -26,6 +26,12 @@ export class MastraStudio extends HelmConstruct<Values> {
   constructor(scope: Construct, id: string, props: Props) {
     super(scope, id);
 
+    const hasStartupOverride =
+      props.command !== undefined ||
+      props.args !== undefined ||
+      props.values?.command !== undefined ||
+      props.values?.args !== undefined;
+
     const computed: Values = {
       image: props.image ?? DEFAULT_IMAGE,
       mastraVersion: props.mastraVersion ?? DEFAULT_MASTRA_VERSION,
@@ -33,8 +39,8 @@ export class MastraStudio extends HelmConstruct<Values> {
       serverPort: props.serverPort,
       studioPort: props.studioPort ?? DEFAULT_STUDIO_PORT,
       serviceType: props.serviceType ?? 'LoadBalancer',
-      command: props.command ?? ['/bin/sh', '-ec'],
-      args: props.args ?? [DEFAULT_STARTUP_SCRIPT],
+      command: props.command ?? (hasStartupOverride ? undefined : ['/bin/sh', '-ec']),
+      args: props.args ?? (hasStartupOverride ? undefined : [DEFAULT_STARTUP_SCRIPT]),
       podAnnotations: {},
       readinessProbe: {
         path: '/',
@@ -46,8 +52,21 @@ export class MastraStudio extends HelmConstruct<Values> {
 
     const values = deepMerge(computed, props.values ?? {});
 
-    // Ensure the readiness probe and compose dependency annotation track the final values.
-    values.readinessProbe.port = props.values?.readinessProbe?.port ?? values.studioPort;
+    // Guard against JavaScript callers passing `null` for nested overrides.
+    if (!values.readinessProbe) {
+      values.readinessProbe = {
+        path: '/',
+        port: values.studioPort,
+        initialDelaySeconds: 30,
+        periodSeconds: 10,
+      };
+    } else {
+      values.readinessProbe.port = props.values?.readinessProbe?.port ?? values.studioPort;
+    }
+
+    if (!values.podAnnotations) {
+      values.podAnnotations = {};
+    }
     values.podAnnotations['composed.docker-x/depends-on'] = `${values.serverHost}:service_healthy`;
 
     const labels = { app: id };
@@ -69,8 +88,10 @@ export class MastraStudio extends HelmConstruct<Values> {
               {
                 name: 'studio',
                 image: values.image,
-                command: values.command,
-                args: values.args,
+                ...(values.command !== undefined && values.command !== null
+                  ? { command: values.command }
+                  : {}),
+                ...(values.args !== undefined && values.args !== null ? { args: values.args } : {}),
                 env: [
                   { name: 'MASTRA_VERSION', value: String(values.mastraVersion) },
                   { name: 'MASTRA_STUDIO_PORT', value: String(values.studioPort) },

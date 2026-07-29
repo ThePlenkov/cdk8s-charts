@@ -332,7 +332,7 @@ Deploys a standalone [Mastra Studio](https://mastra.ai/docs/studio/overview) UI 
 | `mastraVersion` | `string` | no | Pinned Mastra version to install when the image does not contain the CLI (default: `1.20.2`) |
 | `command` | `string[]` | no | Container command override |
 | `args` | `string[]` | no | Container arguments override |
-| `values` | `DeepPartial<MastraStudioValues>` | no | Raw Helm-style value overrides (deep-merged into computed defaults) |
+| `values` | `DeepPartial<Values>` | no | Raw Helm-style value overrides (deep-merged into computed defaults) |
 
 **Exports** (`Exports`):
 
@@ -344,10 +344,10 @@ Deploys a standalone [Mastra Studio](https://mastra.ai/docs/studio/overview) UI 
 
 **Implementation notes:**
 
-- Extends `HelmConstruct<MastraStudioValues>` and uses `deepMerge` to merge `props.values` with computed defaults.
+- Extends `HelmConstruct<Values>` and uses `deepMerge` to merge `props.values` with computed defaults.
 - Creates a Deployment with a readiness probe and a Service.
 - Sets the `composed.docker-x/depends-on` pod annotation so Studio starts after the Mastra server is healthy in compose projections.
-- The default startup script installs a pinned `mastra` version and runs `mastra studio` against the configured server. For prebuilt images, set `command`/`args` to invoke the baked CLI directly.
+- The default startup script installs the pinned `mastra` version only when the CLI is unavailable, then runs `mastra studio` against the configured server. For prebuilt images, set `command`/`args` to invoke the baked CLI directly.
 
 ## 4. Memory bank configuration
 

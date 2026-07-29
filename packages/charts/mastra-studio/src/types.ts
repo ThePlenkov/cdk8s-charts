@@ -16,10 +16,10 @@ export interface Values {
   studioPort: number;
   /** Kubernetes Service type. */
   serviceType: 'ClusterIP' | 'NodePort' | 'LoadBalancer';
-  /** Container command. Defaults to `/bin/sh -ec` which runs the startup script. */
-  command: string[];
-  /** Container arguments. Defaults to a script that installs a pinned Mastra version and starts Studio. */
-  args: string[];
+  /** Container command override. Omit together with `args` to use the default startup script. */
+  command?: string[];
+  /** Container arguments override. Omit together with `command` to use the default startup script. */
+  args?: string[];
   /** Additional pod annotations. `composed.docker-x/depends-on` is set automatically. */
   podAnnotations: Record<string, string>;
   /** Readiness probe for the Studio container. */
@@ -48,9 +48,9 @@ export interface Props {
   image?: string;
   /** Pinned Mastra version to install when the image does not contain the CLI (default: 1.20.2). */
   mastraVersion?: string;
-  /** Container command override. */
+  /** Container command override. Use with `args`; omit both to use the default startup script. */
   command?: string[];
-  /** Container arguments override. */
+  /** Container arguments override. Use with `command`; omit both to use the default startup script. */
   args?: string[];
   /** Raw value overrides (deep-merged into computed defaults). */
   values?: DeepPartial<Values>;
