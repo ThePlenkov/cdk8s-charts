@@ -6,6 +6,7 @@ import type { Construct as IConstruct } from 'constructs';
 import { Construct } from 'constructs';
 import type {
   LitellmMsCallbacksProps,
+  LitellmMsDatabaseProps,
   LitellmMsExports,
   LitellmMsPostgresqlValues,
   LitellmMsProps,
@@ -56,6 +57,23 @@ function validateVirtualKeys(id: string, keys: LitellmMsVirtualKey[]): void {
   }
 }
 
+function validateProps(
+  id: string,
+  props: LitellmMsProps,
+  db: LitellmMsDatabaseProps,
+  deployPostgres: boolean,
+): void {
+  if (deployPostgres && !db.password) {
+    throw new Error(`${id}: database.password is required when embedded PostgreSQL is enabled`);
+  }
+  if (props.callbacks) {
+    validateCallbackFileNames(id, props.callbacks);
+  }
+  if (props.virtualKeys) {
+    validateVirtualKeys(id, props.virtualKeys);
+  }
+}
+
 /**
  * LiteLLM microservices chart (gateway + backend + ui).
  *
@@ -68,53 +86,90 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
   constructor(scope: IConstruct, id: string, props: LitellmMsProps) {
     super(scope, id);
 
-    const svcType = props.serviceType ?? 'ClusterIP';
     const db = props.database ?? {};
     const deployPostgres = db.enabled !== false;
-
-    if (deployPostgres && !db.password) {
-      throw new Error(`${id}: database.password is required when embedded PostgreSQL is enabled`);
-    }
-
-    if (props.callbacks) {
-      validateCallbackFileNames(id, props.callbacks);
-    }
-    if (props.virtualKeys) {
-      validateVirtualKeys(id, props.virtualKeys);
-    }
-
-    const masterSecret = `${id}-masterkey`;
-    const dbSecret = `${id}-db`;
-    const redisSecret = `${id}-redis`;
-    const envSecret = `${id}-env`;
-
     const dbUser = db.username ?? 'litellm';
     const dbName = db.database ?? 'litellm';
+    const masterSecret = `${id}-masterkey`;
+    const redisSecret = `${id}-redis`;
     const postgresRelease = `${id}-postgresql`;
 
+    validateProps(id, props, db, deployPostgres);
+
+    this.createMasterAndRedisSecrets(props.namespace, props, masterSecret, redisSecret);
+    const envSecretName = this.createEnvSecretIfNeeded(id, props.namespace, props);
+    const dbSecretName = this.createDbSecretIfNeeded(id, props.namespace, db, dbUser);
+
+    const databaseConfig = this.resolveDatabaseConfig({
+      id,
+      namespace: props.namespace,
+      deployPostgres,
+      db,
+      dbUser,
+      dbName,
+      postgresRelease,
+      dbSecretName,
+    });
+    const callbacks = this.buildGatewayCallbacks(id, props.namespace, props.callbacks);
+
+    const computed = this.buildComputedValues(props, {
+      id,
+      dbName,
+      masterSecret,
+      redisSecret,
+      envSecretName,
+      ...databaseConfig,
+      ...callbacks,
+    });
+
+    const values = this.renderChart(
+      props.chart ?? DEFAULT_CHART,
+      id,
+      props.namespace,
+      computed,
+      props.values,
+      { helmFlags: ['--skip-tests'], version: props.version },
+    );
+
+    this.exports = this.buildExports(id, values, props.masterKey, props.virtualKeys);
+    if (props.virtualKeys?.length) {
+      this.createKeyProvisioningJob(
+        id,
+        props.namespace,
+        masterSecret,
+        this.exports.backendHost,
+        this.exports.backendPort,
+        props.virtualKeys,
+      );
+    }
+  }
+
+  private createMasterAndRedisSecrets(
+    namespace: string,
+    props: LitellmMsProps,
+    masterSecret: string,
+    redisSecret: string,
+  ): void {
     new ApiObject(this, 'masterkey', {
       apiVersion: 'v1',
       kind: 'Secret',
-      metadata: { name: masterSecret, namespace: props.namespace },
+      metadata: { name: masterSecret, namespace },
       stringData: { 'master-key': props.masterKey },
     });
 
     new ApiObject(this, 'redis-secret', {
       apiVersion: 'v1',
       kind: 'Secret',
-      metadata: { name: redisSecret, namespace: props.namespace },
+      metadata: { name: redisSecret, namespace },
       stringData: { password: props.redis.password },
     });
+  }
 
-    if (db.password) {
-      new ApiObject(this, 'db-secret', {
-        apiVersion: 'v1',
-        kind: 'Secret',
-        metadata: { name: dbSecret, namespace: props.namespace },
-        stringData: { username: dbUser, password: db.password },
-      });
-    }
-
+  private createEnvSecretIfNeeded(
+    id: string,
+    namespace: string,
+    props: LitellmMsProps,
+  ): string | undefined {
     const envStringData: Record<string, string> = {};
     if (props.saltKey) {
       envStringData.LITELLM_SALT_KEY = props.saltKey;
@@ -122,19 +177,54 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     if (props.env) {
       Object.assign(envStringData, props.env);
     }
-    if (Object.keys(envStringData).length > 0) {
-      new ApiObject(this, 'env', {
+    if (Object.keys(envStringData).length === 0) {
+      return undefined;
+    }
+    const envSecret = `${id}-env`;
+    new ApiObject(this, 'env', {
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: envSecret, namespace },
+      stringData: envStringData,
+    });
+    return envSecret;
+  }
+
+  private createDbSecretIfNeeded(
+    id: string,
+    namespace: string,
+    db: LitellmMsDatabaseProps,
+    dbUser: string,
+  ): string {
+    const dbSecret = `${id}-db`;
+    if (db.password) {
+      new ApiObject(this, 'db-secret', {
         apiVersion: 'v1',
         kind: 'Secret',
-        metadata: { name: envSecret, namespace: props.namespace },
-        stringData: envStringData,
+        metadata: { name: dbSecret, namespace },
+        stringData: { username: dbUser, password: db.password },
       });
     }
+    return dbSecret;
+  }
 
-    let dbHost: string;
-    let dbPasswordSecretName: string;
-    let dbPasswordUsernameKey = 'username';
-    let dbPasswordPasswordKey = 'password';
+  private resolveDatabaseConfig(options: {
+    id: string;
+    namespace: string;
+    deployPostgres: boolean;
+    db: LitellmMsDatabaseProps;
+    dbUser: string;
+    dbName: string;
+    postgresRelease: string;
+    dbSecretName: string;
+  }): {
+    dbHost: string;
+    dbPasswordSecretName: string;
+    dbPasswordUsernameKey: string;
+    dbPasswordPasswordKey: string;
+  } {
+    const { id, namespace, deployPostgres, db, dbUser, dbName, postgresRelease, dbSecretName } =
+      options;
 
     if (deployPostgres) {
       const postgresScope = new Construct(this, 'postgresql');
@@ -146,85 +236,129 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
         postgresScope,
         db.chart ?? DEFAULT_POSTGRES_CHART,
         postgresRelease,
-        props.namespace,
+        namespace,
         postgresComputed,
         db.values,
         { version: db.version, helmFlags: ['--skip-tests'] },
       );
-      dbHost = LitellmMs.getPostgresHost(postgresRelease, postgresValues);
-      dbPasswordSecretName = dbSecret;
-    } else {
-      if (!db.host) {
-        throw new Error(`${id}: database.host is required when embedded PostgreSQL is disabled`);
-      }
-      dbHost = db.host;
-      if (db.password) {
-        dbPasswordSecretName = dbSecret;
-      } else if (db.existingSecret?.name) {
-        dbPasswordSecretName = db.existingSecret.name;
-        dbPasswordUsernameKey = db.existingSecret.usernameKey ?? 'username';
-        dbPasswordPasswordKey = db.existingSecret.passwordKey ?? 'password';
-      } else {
-        throw new Error(
-          `${id}: database.password or database.existingSecret is required for an external PostgreSQL writer`,
-        );
-      }
+      return {
+        dbHost: LitellmMs.getPostgresHost(postgresRelease, postgresValues),
+        dbPasswordSecretName: dbSecretName,
+        dbPasswordUsernameKey: 'username',
+        dbPasswordPasswordKey: 'password',
+      };
     }
 
+    if (!db.host) {
+      throw new Error(`${id}: database.host is required when embedded PostgreSQL is disabled`);
+    }
+
+    if (db.password) {
+      return {
+        dbHost: db.host,
+        dbPasswordSecretName: dbSecretName,
+        dbPasswordUsernameKey: 'username',
+        dbPasswordPasswordKey: 'password',
+      };
+    }
+
+    if (db.existingSecret?.name) {
+      return {
+        dbHost: db.host,
+        dbPasswordSecretName: db.existingSecret.name,
+        dbPasswordUsernameKey: db.existingSecret.usernameKey ?? 'username',
+        dbPasswordPasswordKey: db.existingSecret.passwordKey ?? 'password',
+      };
+    }
+
+    throw new Error(
+      `${id}: database.password or database.existingSecret is required for an external PostgreSQL writer`,
+    );
+  }
+
+  private buildGatewayCallbacks(
+    id: string,
+    namespace: string,
+    callbacks?: LitellmMsCallbacksProps,
+  ): { gatewayVolumes: Volume[]; gatewayMounts: VolumeMount[] } {
     const gatewayVolumes: Volume[] = [];
     const gatewayMounts: VolumeMount[] = [];
-
-    if (props.callbacks && Object.keys(props.callbacks.files).length > 0) {
-      const callbacksName = `${id}-callbacks`;
-      new ApiObject(this, 'callbacks', {
-        apiVersion: 'v1',
-        kind: 'ConfigMap',
-        metadata: { name: callbacksName, namespace: props.namespace },
-        data: props.callbacks.files,
-      });
-      gatewayVolumes.push({ name: 'callbacks', configMap: { name: callbacksName } });
-      for (const fileName of Object.keys(props.callbacks.files)) {
-        gatewayMounts.push({
-          name: 'callbacks',
-          mountPath: `${props.callbacks.mountPath}/${fileName}`,
-          subPath: fileName,
-        });
-      }
+    if (!callbacks || Object.keys(callbacks.files).length === 0) {
+      return { gatewayVolumes, gatewayMounts };
     }
 
-    const envSecrets = [
-      ...new Set([
-        ...(props.envSecretNames ?? []),
-        ...(Object.keys(envStringData).length ? [envSecret] : []),
-      ]),
-    ];
+    const callbacksName = `${id}-callbacks`;
+    new ApiObject(this, 'callbacks', {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: { name: callbacksName, namespace },
+      data: callbacks.files,
+    });
+    gatewayVolumes.push({ name: 'callbacks', configMap: { name: callbacksName } });
+    for (const fileName of Object.keys(callbacks.files)) {
+      gatewayMounts.push({
+        name: 'callbacks',
+        mountPath: `${callbacks.mountPath}/${fileName}`,
+        subPath: fileName,
+      });
+    }
+    return { gatewayVolumes, gatewayMounts };
+  }
 
-    const computed: LitellmMsValues = {
-      fullnameOverride: id,
-      masterKey: { secretName: masterSecret, secretKey: 'master-key' },
-      database: {
-        writer: {
-          host: dbHost,
-          port: db.port ?? 5432,
-          dbname: dbName,
-          ...(db.schema ? { schema: db.schema } : {}),
-          passwordSecret: {
-            name: dbPasswordSecretName,
-            usernameKey: dbPasswordUsernameKey,
-            passwordKey: dbPasswordPasswordKey,
-          },
-        },
+  private buildComputedValues(
+    props: LitellmMsProps,
+    options: {
+      id: string;
+      dbName: string;
+      masterSecret: string;
+      redisSecret: string;
+      envSecretName?: string;
+      dbHost: string;
+      dbPasswordSecretName: string;
+      dbPasswordUsernameKey: string;
+      dbPasswordPasswordKey: string;
+      gatewayVolumes: Volume[];
+      gatewayMounts: VolumeMount[];
+    },
+  ): LitellmMsValues {
+    const svcType = props.serviceType ?? 'ClusterIP';
+    const envSecrets: string[] = props.envSecretNames ? [...props.envSecretNames] : [];
+    if (options.envSecretName) {
+      envSecrets.push(options.envSecretName);
+    }
+
+    const dbWriter: import('./types').LitellmMsDatabaseEndpoint = {
+      host: options.dbHost,
+      port: props.database?.port ?? 5432,
+      dbname: options.dbName ?? 'litellm',
+      passwordSecret: {
+        name: options.dbPasswordSecretName,
+        usernameKey: options.dbPasswordUsernameKey,
+        passwordKey: options.dbPasswordPasswordKey,
       },
+    };
+    if (props.database?.schema) {
+      dbWriter.schema = props.database.schema;
+    }
+
+    const gatewayExtra =
+      options.gatewayVolumes.length > 0
+        ? { volumes: options.gatewayVolumes, volumeMounts: options.gatewayMounts }
+        : {};
+
+    return {
+      fullnameOverride: options.id,
+      masterKey: { secretName: options.masterSecret, secretKey: 'master-key' },
+      database: { writer: dbWriter },
       redis: {
         host: props.redis.host,
         port: props.redis.port,
-        passwordSecret: { name: redisSecret, passwordKey: 'password' },
+        passwordSecret: { name: options.redisSecret, passwordKey: 'password' },
       },
       gateway: {
         config: { create: true, proxy_config: props.proxyConfig },
         envSecrets,
-        ...(gatewayVolumes.length ? { volumes: gatewayVolumes } : {}),
-        ...(gatewayMounts.length ? { volumeMounts: gatewayMounts } : {}),
+        ...gatewayExtra,
         service: { type: svcType, port: 4000 },
         hpa: { enabled: false },
         resources: {
@@ -251,46 +385,37 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       },
       migrationJob: { enabled: true },
     };
+  }
 
-    const values = this.renderChart(
-      props.chart ?? DEFAULT_CHART,
-      id,
-      props.namespace,
-      computed,
-      props.values,
-      { helmFlags: ['--skip-tests'], version: props.version },
-    );
-
+  private buildExports(
+    id: string,
+    values: LitellmMsValues,
+    masterKey: string,
+    virtualKeys?: LitellmMsVirtualKey[],
+  ): LitellmMsExports {
     const fullname = values.fullnameOverride ?? id;
     const gatewayPort = values.gateway?.service?.port ?? 4000;
     const backendPort = values.backend?.service?.port ?? 4001;
     const uiPort = values.ui?.service?.port ?? 3000;
-
     const gatewayHost = `${fullname}-gateway`;
     const backendHost = `${fullname}-backend`;
     const uiHost = `${fullname}-ui`;
 
     const virtualKeyMap: Record<string, string> = {};
-    if (props.virtualKeys && props.virtualKeys.length > 0) {
-      this.createKeyProvisioningJob(
-        id,
-        props.namespace,
-        masterSecret,
-        backendHost,
-        backendPort,
-        props.virtualKeys,
-      );
-      for (const vk of props.virtualKeys) virtualKeyMap[vk.alias] = vk.key;
+    if (virtualKeys) {
+      for (const vk of virtualKeys) {
+        virtualKeyMap[vk.alias] = vk.key;
+      }
     }
 
-    this.exports = {
+    return {
       gatewayHost,
       gatewayPort,
       backendHost,
       backendPort,
       uiHost,
       uiPort,
-      masterKey: props.masterKey,
+      masterKey,
       virtualKeys: virtualKeyMap,
       host: gatewayHost,
       port: gatewayPort,
