@@ -137,13 +137,25 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
     overrides?: DeepPartial<V>,
     options?: { helmFlags?: string[]; repo?: string; version?: string },
   ): V {
+    return this.renderChartOn(this, chart, releaseName, namespace, computed, overrides, options);
+  }
+
+  /** Install a Helm chart under an explicit scope (for multi-chart constructs). */
+  protected renderChartOn<U extends Record<string, any>>(
+    scope: Construct,
+    chart: string,
+    releaseName: string,
+    namespace: string,
+    computed: U,
+    overrides?: DeepPartial<U>,
+    options?: { helmFlags?: string[]; repo?: string; version?: string },
+  ): U {
     const values = overrides ? deepMerge(computed, overrides) : computed;
 
     const { chart: resolved, fromCache } = resolveChart(chart, options?.version);
     const isOci = chart.startsWith('oci://');
     const repoFlags = options?.repo && !isOci ? ['--repo', options.repo] : [];
     const helmFlags = [...repoFlags, ...(options?.helmFlags ?? [])];
-    // When using a local .tgz: version is already baked in, --repo is irrelevant
     const flags = fromCache
       ? helmFlags.filter((f, i, arr) => {
           if (f === '--repo' || f.startsWith('--repo=')) return false;
@@ -152,7 +164,7 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
         })
       : helmFlags;
 
-    new Helm(this, 'chart', {
+    new Helm(scope, 'chart', {
       chart: resolved,
       releaseName,
       namespace,
