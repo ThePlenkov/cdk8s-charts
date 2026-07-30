@@ -368,6 +368,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       options.gatewayVolumes.length > 0
         ? { volumes: options.gatewayVolumes, volumeMounts: options.gatewayMounts }
         : {};
+    const backendExtra = gatewayExtra;
 
     return {
       fullnameOverride: options.id,
@@ -388,6 +389,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       },
       backend: {
         envSecrets,
+        ...backendExtra,
         service: { type: 'ClusterIP', port: 4001 },
         hpa: HPA_DISABLED,
         resources: DEFAULT_RESOURCES,
