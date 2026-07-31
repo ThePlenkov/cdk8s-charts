@@ -1,0 +1,38 @@
+# Build output
+dist/
+*.js
+*.d.ts
+*.js.map
+*.d.ts.map
+!jest.config.js
+
+# Dependencies
+node_modules/
+
+# Alternative lock files (package-lock.json is tracked for reproducible installs)
+bun.lockb
+pnpm-lock.yaml
+yarn.lock
+
+# cdk8s
+imports/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NX
+.nx/
+bun.lock
+tsconfig.tsbuildinfo

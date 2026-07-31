@@ -1,0 +1,45 @@
+{
+  "charts": [
+    {
+      "name": "gitlab-runner",
+      "chart": "gitlab-runner",
+      "repo": "https://charts.gitlab.io"
+    },
+    {
+      "name": "headlamp",
+      "chart": "headlamp",
+      "repo": "https://kubernetes-sigs.github.io/headlamp/"
+    },
+    {
+      "name": "hindsight",
+      "chart": "oci://ghcr.io/vectorize-io/charts/hindsight"
+    },
+    {
+      "name": "langfuse",
+      "chart": "langfuse",
+      "repo": "https://langfuse.github.io/langfuse-k8s"
+    },
+    {
+      "name": "litellm",
+      "chart": "oci://ghcr.io/berriai/litellm-helm"
+    },
+    {
+      "name": "litellm-ms",
+      "chart": "oci://ghcr.io/berriai/litellm/chart/litellm"
+    },
+    {
+      "name": "plane-ce",
+      "chart": "plane-ce",
+      "repo": "https://helm.plane.so/"
+    },
+    {
+      "name": "qdrant",
+      "chart": "qdrant",
+      "repo": "https://qdrant.github.io/qdrant-helm"
+    },
+    {
+      "name": "redis",
+      "chart": "oci://registry-1.docker.io/bitnamicharts/redis"
+    }
+  ]
+}
