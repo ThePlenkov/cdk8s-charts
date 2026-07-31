@@ -146,7 +146,7 @@ Use `@cdk8s-charts/litellm` for the legacy monolithic `litellm-helm` chart.
 | `redis` | `{ host, port, password }` | yes | External Redis wiring |
 | `database` | `LitellmMsDatabaseProps` | no | Embedded Bitnami PostgreSQL (default) or external PostgreSQL writer |
 | `saltKey` | `string` | no | `LITELLM_SALT_KEY` for credential encryption |
-| `callbacks` | `{ mountPath, files }` | no | Python callbacks mounted on the gateway |
+| `callbacks` | `{ mountPath, files }` | no | Python callbacks mounted on the gateway and backend |
 | `virtualKeys` | `LitellmMsVirtualKey[]` | no | Keys provisioned via backend management API |
 | `chart` / `version` / `values` | | no | Upstream chart ref and overrides |
 

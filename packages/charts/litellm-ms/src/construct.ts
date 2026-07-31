@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type {
   AutoscalingConfig,
+  DeepPartial,
   ResourceRequirements,
   Volume,
   VolumeMount,
@@ -130,6 +131,15 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     });
     const callbacks = this.buildGatewayCallbacks(id, props.namespace, props.callbacks);
 
+    // Merge generated callback volumes/mounts with any user-supplied ones for
+    // gateway and backend so overrides cannot drop one side of a volume/mount
+    // pair (deepMerge replaces arrays rather than concatenating them).
+    const userGatewayVolumes = (props.values?.gateway?.volumes as Volume[] | undefined) ?? [];
+    const userGatewayMounts =
+      (props.values?.gateway?.volumeMounts as VolumeMount[] | undefined) ?? [];
+    const userBackendVolumes = props.values?.backend?.volumes as Volume[] | undefined;
+    const userBackendMounts = props.values?.backend?.volumeMounts as VolumeMount[] | undefined;
+
     const computed = this.buildComputedValues(props, {
       id,
       dbName,
@@ -137,7 +147,16 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       redisSecret,
       envSecretName,
       ...databaseConfig,
-      ...callbacks,
+      gatewayVolumes: [...callbacks.gatewayVolumes, ...userGatewayVolumes],
+      gatewayMounts: [...callbacks.gatewayMounts, ...userGatewayMounts],
+      backendVolumes:
+        userBackendVolumes === undefined
+          ? undefined
+          : [...callbacks.gatewayVolumes, ...userBackendVolumes],
+      backendMounts:
+        userBackendMounts === undefined
+          ? undefined
+          : [...callbacks.gatewayMounts, ...userBackendMounts],
     });
 
     const values = this.renderChart(
@@ -145,7 +164,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       id,
       props.namespace,
       computed,
-      props.values,
+      this.stripVolumeOverrides(props.values),
       { helmFlags: ['--skip-tests'], version: props.version },
     );
 
@@ -342,6 +361,8 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       dbPasswordPasswordKey: string;
       gatewayVolumes: Volume[];
       gatewayMounts: VolumeMount[];
+      backendVolumes?: Volume[];
+      backendMounts?: VolumeMount[];
     },
   ): LitellmMsValues {
     const svcType = props.serviceType ?? 'ClusterIP';
@@ -364,10 +385,17 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       dbWriter.schema = props.database.schema;
     }
 
-    const gatewayExtra =
-      options.gatewayVolumes.length > 0
-        ? { volumes: options.gatewayVolumes, volumeMounts: options.gatewayMounts }
-        : {};
+    const backendVolumes = options.backendVolumes ?? options.gatewayVolumes;
+    const backendMounts = options.backendMounts ?? options.gatewayMounts;
+
+    const gatewayExtra = {
+      ...(options.gatewayVolumes.length > 0 ? { volumes: options.gatewayVolumes } : {}),
+      ...(options.gatewayMounts.length > 0 ? { volumeMounts: options.gatewayMounts } : {}),
+    };
+    const backendExtra = {
+      ...(backendVolumes.length > 0 ? { volumes: backendVolumes } : {}),
+      ...(backendMounts.length > 0 ? { volumeMounts: backendMounts } : {}),
+    };
 
     return {
       fullnameOverride: options.id,
@@ -388,6 +416,7 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       },
       backend: {
         envSecrets,
+        ...backendExtra,
         service: { type: 'ClusterIP', port: 4001 },
         hpa: HPA_DISABLED,
         resources: DEFAULT_RESOURCES,
@@ -399,6 +428,27 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       },
       migrationJob: { enabled: true },
     };
+  }
+
+  private stripVolumeOverrides(
+    values: DeepPartial<LitellmMsValues> | undefined,
+  ): DeepPartial<LitellmMsValues> | undefined {
+    if (!values) return undefined;
+    const { gateway, backend, ...rest } = values;
+    const overrides: DeepPartial<LitellmMsValues> = { ...rest };
+    if (gateway) {
+      const { volumes: _v, volumeMounts: _vm, ...gatewayRest } = gateway;
+      if (Object.keys(gatewayRest).length > 0) {
+        overrides.gateway = gatewayRest;
+      }
+    }
+    if (backend) {
+      const { volumes: _v, volumeMounts: _vm, ...backendRest } = backend;
+      if (Object.keys(backendRest).length > 0) {
+        overrides.backend = backendRest;
+      }
+    }
+    return Object.keys(overrides).length > 0 ? overrides : undefined;
   }
 
   private buildExports(
