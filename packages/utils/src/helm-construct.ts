@@ -1,5 +1,7 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { Helm } from 'cdk8s';
 import { Construct } from 'constructs';
 import type { DeepPartial } from './k8s-types';
@@ -12,19 +14,53 @@ const HELM_CACHE_DIR = process.env.HELM_CACHE_HOME
   ? join(process.env.HELM_CACHE_HOME, 'repository')
   : join(process.env.HOME ?? '/root', '.cache', 'helm', 'repository');
 
+let ociCacheDir: string | undefined;
+const ociPullCache = new Map<string, string>();
+
+function getOciCacheDir(): string {
+  if (!ociCacheDir) {
+    ociCacheDir = process.env.HELM_OCI_CACHE_DIR
+      ? process.env.HELM_OCI_CACHE_DIR
+      : mkdtempSync(join(tmpdir(), 'cdk8s-oci-'));
+    if (!existsSync(ociCacheDir)) {
+      mkdirSync(ociCacheDir, { recursive: true });
+    }
+    if (!process.env.HELM_OCI_CACHE_DIR) {
+      const dir = ociCacheDir;
+      process.once('exit', () => {
+        if (dir) {
+          try {
+            rmSync(dir, { recursive: true, force: true });
+          } catch {}
+        }
+      });
+    }
+  }
+  return ociCacheDir;
+}
+
 /**
  * Resolve an OCI chart reference to a local cached .tgz if available.
- * Falls back to the original reference when no cache hit.
+ * Falls back to pulling the OCI chart into a temporary local cache
+ * when no cache hit, unless HELM_OCI_PULL=0.
  *
  * Set HELM_USE_CACHE=1 to force local cache usage (useful when OCI
  * registries are unreachable, e.g. WSL2 IPv6 issues).
+ * Set HELM_OCI_PULL=0 to skip the OCI fallback pull and pass the
+ * original OCI reference to cdk8s Helm.
+ * Set HELM_OCI_PULL_TIMEOUT to change the pull timeout in ms (default 60000).
+ * Set HELM_OCI_CACHE_DIR to use a persistent cache directory; otherwise a
+ * process-scratch directory is created and removed on exit.
+ * Set HELM_OCI_EXECUTABLE to an absolute path to the helm binary
+ * (default: /usr/local/bin/helm, /usr/bin/helm, /bin/helm).
  */
 function resolveChart(chart: string, version?: string): { chart: string; fromCache: boolean } {
-  if (process.env.HELM_USE_CACHE !== '1') return { chart, fromCache: false };
-  if (!existsSync(HELM_CACHE_DIR)) return { chart, fromCache: false };
+  if (process.env.HELM_USE_CACHE !== '1' || !existsSync(HELM_CACHE_DIR)) {
+    return resolveOciChart(chart, version);
+  }
 
   // Extract chart name: last segment for OCI URLs, or the name itself
-  const chartName = chart.startsWith('oci://') ? chart.split('/').pop()! : chart;
+  const chartName = chart.startsWith('oci://') ? (chart.split('/').pop() ?? chart) : chart;
 
   const files = readdirSync(HELM_CACHE_DIR);
 
@@ -36,8 +72,9 @@ function resolveChart(chart: string, version?: string): { chart: string; fromCac
       console.log(`[helm-cache] ${chart}@${version} -> ${resolved}`);
       return { chart: resolved, fromCache: true };
     }
-    // Exact pinned version is not cached; let Helm fetch the requested version.
-    return { chart, fromCache: false };
+    // Exact pinned version is not cached. Pull it locally first so Helm's OCI
+    // status lines cannot become part of the rendered Kubernetes YAML.
+    return resolveOciChart(chart, version);
   }
 
   // No version pinned: pick the latest cached version (lexicographic sort)
@@ -48,7 +85,80 @@ function resolveChart(chart: string, version?: string): { chart: string; fromCac
     return { chart: resolved, fromCache: true };
   }
 
-  return { chart, fromCache: false };
+  return resolveOciChart(chart, version);
+}
+
+function resolveOciChart(chart: string, version?: string): { chart: string; fromCache: boolean } {
+  if (process.env.HELM_OCI_PULL === '0') {
+    return { chart, fromCache: false };
+  }
+  return { chart: pullOciChart(chart, version), fromCache: true };
+}
+
+function resolveHelmExecutable(): string {
+  if (process.env.HELM_OCI_EXECUTABLE) {
+    if (!isAbsolute(process.env.HELM_OCI_EXECUTABLE)) {
+      throw new TypeError(
+        `HELM_OCI_EXECUTABLE must be an absolute path, got ${process.env.HELM_OCI_EXECUTABLE}`,
+      );
+    }
+    return process.env.HELM_OCI_EXECUTABLE;
+  }
+  for (const p of ['/usr/local/bin/helm', '/usr/bin/helm', '/bin/helm']) {
+    if (existsSync(p)) return p;
+  }
+  throw new Error(
+    'helm executable not found in /usr/local/bin, /usr/bin, or /bin. Set HELM_OCI_EXECUTABLE to an absolute path.',
+  );
+}
+
+function pullOciChart(chart: string, version?: string): string {
+  const key = `${chart}@${version ?? 'latest'}`;
+  const cached = ociPullCache.get(key);
+  if (cached) return cached;
+
+  const cacheDir = getOciCacheDir();
+  const destination = mkdtempSync(join(tmpdir(), 'cdk8s-oci-pull-'));
+  const args = ['pull', chart, '--destination', destination];
+  if (version) args.push('--version', version);
+
+  const timeout = Number(process.env.HELM_OCI_PULL_TIMEOUT ?? '60000');
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new TypeError(
+      `HELM_OCI_PULL_TIMEOUT must be a positive integer, got ${process.env.HELM_OCI_PULL_TIMEOUT}`,
+    );
+  }
+  try {
+    const result = spawnSync(resolveHelmExecutable(), args, { encoding: 'utf8', timeout });
+    if (result.error) {
+      if ((result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+        throw new Error(
+          `Helm pull timed out after ${timeout}ms for ${chart}: ${result.error.message}`,
+        );
+      }
+      throw result.error;
+    }
+    if (result.signal) {
+      throw new Error(
+        `Helm pull terminated (${result.signal}) after ${timeout}ms for ${chart}: ${result.stderr || ''}`,
+      );
+    }
+    if (result.status !== 0) {
+      throw new Error(result.stderr || `Unable to pull Helm chart ${chart}`);
+    }
+
+    const archive = readdirSync(destination).find((file) => file.endsWith('.tgz'));
+    if (!archive) throw new Error(`Helm did not produce a chart archive for ${chart}`);
+
+    const safeChart = chart.replace(/^oci:\/\//, '').replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const cacheName = `${safeChart}-${version ?? 'latest'}.tgz`;
+    const cachePath = join(cacheDir, cacheName);
+    copyFileSync(join(destination, archive), cachePath);
+    ociPullCache.set(key, cachePath);
+    return cachePath;
+  } finally {
+    rmSync(destination, { recursive: true, force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------
