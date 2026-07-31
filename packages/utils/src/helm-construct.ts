@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { Helm } from 'cdk8s';
 import { Construct } from 'constructs';
 import type { DeepPartial } from './k8s-types';
@@ -51,6 +51,8 @@ function getOciCacheDir(): string {
  * Set HELM_OCI_PULL_TIMEOUT to change the pull timeout in ms (default 60000).
  * Set HELM_OCI_CACHE_DIR to use a persistent cache directory; otherwise a
  * process-scratch directory is created and removed on exit.
+ * Set HELM_OCI_EXECUTABLE to an absolute path to the helm binary
+ * (default: /usr/local/bin/helm, /usr/bin/helm, /bin/helm).
  */
 function resolveChart(chart: string, version?: string): { chart: string; fromCache: boolean } {
   if (process.env.HELM_USE_CACHE !== '1' || !existsSync(HELM_CACHE_DIR)) {
@@ -93,6 +95,23 @@ function resolveOciChart(chart: string, version?: string): { chart: string; from
   return { chart: pullOciChart(chart, version), fromCache: true };
 }
 
+function resolveHelmExecutable(): string {
+  if (process.env.HELM_OCI_EXECUTABLE) {
+    if (!isAbsolute(process.env.HELM_OCI_EXECUTABLE)) {
+      throw new TypeError(
+        `HELM_OCI_EXECUTABLE must be an absolute path, got ${process.env.HELM_OCI_EXECUTABLE}`,
+      );
+    }
+    return process.env.HELM_OCI_EXECUTABLE;
+  }
+  for (const p of ['/usr/local/bin/helm', '/usr/bin/helm', '/bin/helm']) {
+    if (existsSync(p)) return p;
+  }
+  throw new Error(
+    'helm executable not found in /usr/local/bin, /usr/bin, or /bin. Set HELM_OCI_EXECUTABLE to an absolute path.',
+  );
+}
+
 function pullOciChart(chart: string, version?: string): string {
   const key = `${chart}@${version ?? 'latest'}`;
   const cached = ociPullCache.get(key);
@@ -109,9 +128,8 @@ function pullOciChart(chart: string, version?: string): string {
       `HELM_OCI_PULL_TIMEOUT must be a positive integer, got ${process.env.HELM_OCI_PULL_TIMEOUT}`,
     );
   }
-  const env = { ...process.env, PATH: '/usr/local/bin:/usr/bin:/bin' };
   try {
-    const result = spawnSync('helm', args, { encoding: 'utf8', timeout, env });
+    const result = spawnSync(resolveHelmExecutable(), args, { encoding: 'utf8', timeout });
     if (result.error) {
       if ((result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
         throw new Error(
