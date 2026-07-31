@@ -1,4 +1,6 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Helm } from 'cdk8s';
 import { Construct } from 'constructs';
@@ -20,8 +22,11 @@ const HELM_CACHE_DIR = process.env.HELM_CACHE_HOME
  * registries are unreachable, e.g. WSL2 IPv6 issues).
  */
 function resolveChart(chart: string, version?: string): { chart: string; fromCache: boolean } {
-  if (process.env.HELM_USE_CACHE !== '1') return { chart, fromCache: false };
-  if (!existsSync(HELM_CACHE_DIR)) return { chart, fromCache: false };
+  if (process.env.HELM_USE_CACHE !== '1' || !existsSync(HELM_CACHE_DIR)) {
+    return chart.startsWith('oci://')
+      ? { chart: pullOciChart(chart, version), fromCache: true }
+      : { chart, fromCache: false };
+  }
 
   // Extract chart name: last segment for OCI URLs, or the name itself
   const chartName = chart.startsWith('oci://') ? chart.split('/').pop()! : chart;
@@ -36,8 +41,11 @@ function resolveChart(chart: string, version?: string): { chart: string; fromCac
       console.log(`[helm-cache] ${chart}@${version} -> ${resolved}`);
       return { chart: resolved, fromCache: true };
     }
-    // Exact pinned version is not cached; let Helm fetch the requested version.
-    return { chart, fromCache: false };
+    // Exact pinned version is not cached. Pull it locally first so Helm's OCI
+    // status lines cannot become part of the rendered Kubernetes YAML.
+    return chart.startsWith('oci://')
+      ? { chart: pullOciChart(chart, version), fromCache: true }
+      : { chart, fromCache: false };
   }
 
   // No version pinned: pick the latest cached version (lexicographic sort)
@@ -48,7 +56,23 @@ function resolveChart(chart: string, version?: string): { chart: string; fromCac
     return { chart: resolved, fromCache: true };
   }
 
-  return { chart, fromCache: false };
+  return chart.startsWith('oci://')
+    ? { chart: pullOciChart(chart, version), fromCache: true }
+    : { chart, fromCache: false };
+}
+
+function pullOciChart(chart: string, version?: string): string {
+  const destination = mkdtempSync(join(tmpdir(), 'cdk8s-chart-'));
+  const args = ['pull', chart, '--destination', destination];
+  if (version) args.push('--version', version);
+
+  const result = spawnSync('helm', args, { encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr || `Unable to pull Helm chart ${chart}`);
+
+  const archive = readdirSync(destination).find((file) => file.endsWith('.tgz'));
+  if (!archive) throw new Error(`Helm did not produce a chart archive for ${chart}`);
+  return join(destination, archive);
 }
 
 // ---------------------------------------------------------------------------
