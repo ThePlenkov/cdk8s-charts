@@ -191,6 +191,7 @@ export function deepMerge<T extends Record<string, any>>(a: T, b: DeepPartial<T>
 // Base Helm construct
 // ---------------------------------------------------------------------------
 
+/** Props for Helm construct with optional value overrides. */
 export interface HelmConstructProps<V> {
   namespace: string;
   /** Helm chart ref. For OCI charts this is the full oci:// URL; for repo charts this is the chart name. */
@@ -220,6 +221,10 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
    * Example:
    *   this.flattenToEnv({ llm: { provider: 'openai' } }, 'HINDSIGHT_API')
    *   -> { HINDSIGHT_API_LLM_PROVIDER: 'openai' }
+   *
+   * @param obj - The object to flatten
+   * @param prefix - The prefix for env var keys
+   * @returns Flattened object with UPPER_SNAKE_CASE keys
    */
   protected flattenToEnv(obj: Record<string, unknown>, prefix: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -238,6 +243,14 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
   /**
    * Merge computed values with user overrides and install the Helm chart.
    * Returns the final merged values for post-processing (e.g. reading ports).
+   *
+   * @param chart - Helm chart reference (OCI or local)
+   * @param releaseName - Helm release name
+   * @param namespace - Kubernetes namespace
+   * @param computed - Computed Helm values
+   * @param overrides - User-provided value overrides
+   * @param options - Additional options (helm flags, repo, version)
+   * @returns Final merged values
    */
   protected renderChart(
     chart: string,
@@ -250,7 +263,18 @@ export abstract class HelmConstruct<V extends Record<string, any>> extends Const
     return this.renderChartOn(this, chart, releaseName, namespace, computed, overrides, options);
   }
 
-  /** Install a Helm chart under an explicit scope (for multi-chart constructs). */
+  /**
+   * Install a Helm chart under an explicit scope (for multi-chart constructs).
+   *
+   * @param scope - Construct scope for the Helm chart
+   * @param chart - Helm chart reference (OCI or local)
+   * @param releaseName - Helm release name
+   * @param namespace - Kubernetes namespace
+   * @param computed - Computed Helm values
+   * @param overrides - User-provided value overrides
+   * @param options - Additional options (helm flags, repo, version)
+   * @returns Final merged values
+   */
   protected renderChartOn<U extends Record<string, any>>(
     scope: Construct,
     chart: string,
