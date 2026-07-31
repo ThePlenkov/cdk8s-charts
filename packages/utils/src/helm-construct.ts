@@ -104,9 +104,14 @@ function pullOciChart(chart: string, version?: string): string {
   if (version) args.push('--version', version);
 
   const timeout = Number(process.env.HELM_OCI_PULL_TIMEOUT ?? '60000');
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new TypeError(
+      `HELM_OCI_PULL_TIMEOUT must be a positive integer, got ${process.env.HELM_OCI_PULL_TIMEOUT}`,
+    );
+  }
   const env = { ...process.env, PATH: '/usr/local/bin:/usr/bin:/bin' };
-  const result = spawnSync('helm', args, { encoding: 'utf8', timeout, env });
   try {
+    const result = spawnSync('helm', args, { encoding: 'utf8', timeout, env });
     if (result.error) {
       if ((result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
         throw new Error(
