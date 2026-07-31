@@ -137,9 +137,8 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
     const userGatewayVolumes = (props.values?.gateway?.volumes as Volume[] | undefined) ?? [];
     const userGatewayMounts =
       (props.values?.gateway?.volumeMounts as VolumeMount[] | undefined) ?? [];
-    const userBackendVolumes = (props.values?.backend?.volumes as Volume[] | undefined) ?? [];
-    const userBackendMounts =
-      (props.values?.backend?.volumeMounts as VolumeMount[] | undefined) ?? [];
+    const userBackendVolumes = props.values?.backend?.volumes as Volume[] | undefined;
+    const userBackendMounts = props.values?.backend?.volumeMounts as VolumeMount[] | undefined;
 
     const computed = this.buildComputedValues(props, {
       id,
@@ -150,8 +149,14 @@ export class LitellmMs extends HelmConstruct<LitellmMsValues> {
       ...databaseConfig,
       gatewayVolumes: [...callbacks.gatewayVolumes, ...userGatewayVolumes],
       gatewayMounts: [...callbacks.gatewayMounts, ...userGatewayMounts],
-      backendVolumes: [...callbacks.gatewayVolumes, ...userBackendVolumes],
-      backendMounts: [...callbacks.gatewayMounts, ...userBackendMounts],
+      backendVolumes:
+        userBackendVolumes === undefined
+          ? undefined
+          : [...callbacks.gatewayVolumes, ...userBackendVolumes],
+      backendMounts:
+        userBackendMounts === undefined
+          ? undefined
+          : [...callbacks.gatewayMounts, ...userBackendMounts],
     });
 
     const values = this.renderChart(
